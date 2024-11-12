@@ -125,6 +125,7 @@ class Plaats
 {
 private:
    std::unique_ptr<Tegel> tegel;
+   int                    hoek;
    std::array<std::shared_ptr<Plaats>, zijden> buren;
 
 public:
@@ -139,7 +140,7 @@ public:
    void roteer(QPainter &painter, int h);
 };
 
-Plaats::Plaats() : tegel(nullptr)
+Plaats::Plaats() : tegel(nullptr), hoek(0)
 {
 }
 
@@ -314,6 +315,13 @@ void Plaats::teken(QPainter &painter)
       painter.drawArc(-tegel_br/2, -tegel_br/2, tegel_br, tegel_br, 16*45, 16*270); 
        */
       
+      // voor de test
+      hoek = 1;
+      
+      painter.save();
+      painter.rotate(60*hoek);
+
+      // teken alle bogen
       for (int kl = 0; kl<n_kleuren; kl++)
       {
          // de afstand
@@ -346,6 +354,7 @@ void Plaats::teken(QPainter &painter)
             throw BoogFout();
          }
       }
+      painter.restore();
    }
 }
 
