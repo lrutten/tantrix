@@ -361,11 +361,12 @@ void Plaats::teken(QPainter &painter)
 class Bord
 {
 private:
-   std::array<std::unique_ptr<Tegel>, 10> tegels;
+   std::vector<std::unique_ptr<Tegel>> tegels;
+   int                                 aantal;
    std::array<std::array<std::shared_ptr<Plaats>, bordsize>, bordsize> plaatsen;
    
 public:
-   Bord();
+   Bord(int n);
    void toon();
    void zetburen();
    void zet_starttegel();
@@ -373,7 +374,8 @@ public:
 };
 
 
-Bord::Bord() : 
+Bord::Bord(int n) : aantal(n) 
+   /*
    tegels
    {
       std::make_unique<Tegel>(G,  1, B, R, G, G, B, R),
@@ -387,8 +389,21 @@ Bord::Bord() :
       std::make_unique<Tegel>(G,  9, G, R, G, B, R, B),
       std::make_unique<Tegel>(B, 10, R, B, G, G, R, B)
    }
+    */
 {
    std::cout << "Bord::Bord\n";
+
+   tegels.push_back(std::make_unique<Tegel>(G,  1, B, R, G, G, B, R));
+   tegels.push_back(std::make_unique<Tegel>(G,  2, R, B, G, G, B, R));
+   tegels.push_back(std::make_unique<Tegel>(G,  3, G, R, R, B, B, G));
+   tegels.push_back(std::make_unique<Tegel>(R,  4, G, B, G, R, B, R));
+   tegels.push_back(std::make_unique<Tegel>(R,  5, G, R, B, B, R, G));
+   tegels.push_back(std::make_unique<Tegel>(B,  6, R, G, R, B, G, B));
+   tegels.push_back(std::make_unique<Tegel>(R,  7, G, R, B, B, G, R));
+   tegels.push_back(std::make_unique<Tegel>(B,  8, R, G, B, B, R, G));
+   tegels.push_back(std::make_unique<Tegel>(G,  9, G, R, G, B, R, B));
+   tegels.push_back(std::make_unique<Tegel>(B, 10, R, B, G, G, R, B));
+
    for (int r=0; r<bordsize; r++)
    {
       for (int k=0; k<bordsize; k++)
@@ -555,7 +570,7 @@ void Bord::teken(QPainter &painter)
 
 int main2(int argc, char *args[])
 {
-   Bord bord;
+   Bord bord(3);
    bord.toon();
    bord.zetburen();
 
@@ -770,7 +785,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>();
+    std::unique_ptr<Bord> bord = std::make_unique<Bord>(3);
     bord->zetburen();
     bord->zet_starttegel();
     Venster venster(std::move(bord));
