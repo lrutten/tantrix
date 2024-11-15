@@ -6,6 +6,9 @@ rebuild: src/tantrix.cpp
 build: src/tantrix.cpp
 	mkdir build;cd build;cmake ..;make
 
+valgrind: build/tantrix
+	valgrind --leak-check=full --show-leak-kinds=all build/tantrix
+
 install: build/tantrix
 	cp -v build/tantrix ~/bin
 
