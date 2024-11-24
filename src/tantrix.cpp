@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QPainter>
 
+constexpr int n_tegels  = 10;
 constexpr int bordsize  = 4; // was 12
 constexpr int zijden    = 6;
 constexpr int tegel_br  = 100;
@@ -64,6 +65,7 @@ private:
 
 public:
    Tegel(kleur_t hfd, int nr, kleur_t kl0, kleur_t kl1, kleur_t kl2, kleur_t kl3, kleur_t kl4, kleur_t kl5 );
+   Tegel(const Tegel &van);
    int getBegin(kleur_t kl)
    {
       return bogen[kl][0];
@@ -121,15 +123,26 @@ Tegel::Tegel(kleur_t hfd, int nr, kleur_t kl0, kleur_t kl1, kleur_t kl2, kleur_t
    }
 }
 
+// ok
+Tegel::Tegel(const Tegel &van) :
+   kleur(van.kleur),
+   nummer(van.nummer),
+   kleuren(van.kleuren),
+   bogen(van.bogen)
+{
+}
+   
+
 class Plaats
 {
 private:
    std::unique_ptr<Tegel> tegel;
    int                    hoek;
-   std::array<std::shared_ptr<Plaats>, zijden> buren;
+   std::array<std::weak_ptr<Plaats>, zijden> buren;
 
 public:
    Plaats();
+   Plaats(const Plaats &van);
    void toon();
    void zetbuur(richting_t ri, std::shared_ptr<Plaats> buur);
    void zet_tegel(std::unique_ptr<Tegel> tgl);
@@ -142,6 +155,16 @@ public:
 
 Plaats::Plaats() : tegel(nullptr), hoek(0)
 {
+}
+
+// ok
+Plaats::Plaats(const Plaats &van) : 
+   hoek(van.hoek)
+{
+   if (van.tegel != nullptr)
+   {
+      tegel = std::make_unique<Tegel>(*van.tegel);
+   }
 }
 
 void Plaats::toon()
@@ -361,12 +384,14 @@ void Plaats::teken(QPainter &painter)
 class Bord
 {
 private:
-   std::vector<std::unique_ptr<Tegel>> tegels;
-   int                                 aantal;
+   std::array<std::unique_ptr<Tegel>, n_tegels> tegels; // totaal aantal tegels
+   int                                          aantal; // effectief aantal tegels in dit spel
    std::array<std::array<std::shared_ptr<Plaats>, bordsize>, bordsize> plaatsen;
    
 public:
    Bord(int n);
+   Bord (const Bord &van);
+   //Bord &operator=(const Bord &van);
    void toon();
    void zetburen();
    void zet_starttegel();
@@ -374,8 +399,7 @@ public:
 };
 
 
-Bord::Bord(int n) : aantal(n) 
-   /*
+Bord::Bord(int n) : aantal(n), 
    tegels
    {
       std::make_unique<Tegel>(G,  1, B, R, G, G, B, R),
@@ -389,10 +413,10 @@ Bord::Bord(int n) : aantal(n)
       std::make_unique<Tegel>(G,  9, G, R, G, B, R, B),
       std::make_unique<Tegel>(B, 10, R, B, G, G, R, B)
    }
-    */
 {
    std::cout << "Bord::Bord\n";
 
+   /*
    tegels.push_back(std::make_unique<Tegel>(G,  1, B, R, G, G, B, R));
    tegels.push_back(std::make_unique<Tegel>(G,  2, R, B, G, G, B, R));
    tegels.push_back(std::make_unique<Tegel>(G,  3, G, R, R, B, B, G));
@@ -403,6 +427,7 @@ Bord::Bord(int n) : aantal(n)
    tegels.push_back(std::make_unique<Tegel>(B,  8, R, G, B, B, R, G));
    tegels.push_back(std::make_unique<Tegel>(G,  9, G, R, G, B, R, B));
    tegels.push_back(std::make_unique<Tegel>(B, 10, R, B, G, G, R, B));
+    */
 
    for (int r=0; r<bordsize; r++)
    {
@@ -413,8 +438,63 @@ Bord::Bord(int n) : aantal(n)
    }
 }
 
+Bord::Bord(const Bord &van)
+{
+   for (int i=0; i<n_tegels; i++)
+   {
+      std::cout << "van.tegels[i] " << van.tegels[i] << "\n";
+      if (van.tegels[i] != nullptr)
+      {
+         tegels[i] = std::make_unique<Tegel>(*van.tegels[i]);
+      }
+      else
+      {
+         tegels[i] = nullptr;
+      }
+   }
+
+   for (int r=0; r<bordsize; r++)
+   {
+      for (int k=0; k<bordsize; k++)
+      {
+         plaatsen[r][k] = std::make_shared<Plaats>(*van.plaatsen[r][k]);
+      }
+   }
+}   
+
+/*
+Bord &Bord::operator=(const Bord &van)
+{
+   for (int i=0; i<n_tegels; i++)
+   {
+      tegels[i] = std::make_unique<Tegel>(*van.tegels[i]);
+   }
+
+   for (int r=0; r<bordsize; r++)
+   {
+      for (int k=0; k<bordsize; k++)
+      {
+         plaatsen[r][k] = std::make_shared<Plaats>();
+      }
+   }
+   
+   return *this;
+}   
+ */
 void Bord::toon()
 {
+   for (int i=0; i<n_tegels; i++)
+   {
+      if (tegels[i] != nullptr)
+      {
+         std::cout << "tegel niet nul\n";
+      }
+      else
+      {
+         std::cout << "tegel nul\n";
+      }
+   }
+
    for (int r=0; r<bordsize; r++)
    {
       if (r%2 == 0)
@@ -785,9 +865,28 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
+    std::cout << "maak bord\n";
     std::unique_ptr<Bord> bord = std::make_unique<Bord>(3);
     bord->zetburen();
     bord->zet_starttegel();
+    std::unique_ptr<Bord> bord2;
+
+    std::cout << "dit is bord2\n";
+    bord->toon();
+    
+    // voor de test
+    std::cout << "kopieer bord naar bord2\n";
+    bord2 = std::make_unique<Bord>(*bord);
+    
+    // voor de test
+    Bord bord3(3);
+    Bord bord4(bord3);
+
+    // voor de test van de Tegel copy constructor
+    std::unique_ptr<Tegel> teg = std::make_unique<Tegel>(G,  1, B, R, G, G, B, R);
+    std::unique_ptr<Tegel> teg2;
+    teg2 = std::make_unique<Tegel>(*teg);
+    
     Venster venster(std::move(bord));
     venster.show();
     return app.exec();
