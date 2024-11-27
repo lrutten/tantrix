@@ -158,6 +158,8 @@ private:
    std::unique_ptr<Tegel> tegel;
    int                    hoek;
    std::array<std::weak_ptr<Plaats>, zijden> buren;
+   int                    r;
+   int                    k;
 
 public:
    Plaats();
@@ -176,6 +178,15 @@ public:
    {
       hoek++;
    }
+   void set_rk(int rr, int kk)
+   {
+      r = rr;
+      k = kk;
+   }
+   std::tuple<int, int> get_rk()
+   {
+      return {r, k};
+   }
    void teken(QPainter &painter);
    void boog1(QPainter &painter, kleur_t kleur);
    void boog2(QPainter &painter, kleur_t kleur);
@@ -183,13 +194,13 @@ public:
    void roteer(QPainter &painter, int h);
 };
 
-Plaats::Plaats() : tegel(nullptr), hoek(0)
+Plaats::Plaats() : tegel(nullptr), hoek(0), r(0), k(0)
 {
 }
 
 // ok
 Plaats::Plaats(const Plaats &van) : 
-   hoek(van.hoek)
+   hoek(van.hoek), r(van.r), k(van.k)
 {
    if (van.tegel != nullptr)
    {
@@ -497,6 +508,7 @@ Bord::Bord(int n) : aantal(n),
       for (int k=0; k<bordsize; k++)
       {
          plaatsen[r][k] = std::make_shared<Plaats>();
+         plaatsen[r][k]->set_rk(r, k);
       }
    }
    
@@ -588,7 +600,7 @@ void Bord::toon()
 // *-*-*
 // |\|\|
 // *-*-*
-// |/ /|
+// |/|/|
 // *-*-*
 //
 //  *-*-*
@@ -620,7 +632,7 @@ void Bord::zetburen()
          {
             if (r > 0 && k > 0)
             {
-               plaatsen[r][k]->zet_buur(NO, plaatsen[r-1][k-1]);
+               plaatsen[r][k]->zet_buur(NO, plaatsen[r-1][k+1]);
             }
          }
          else
@@ -745,7 +757,8 @@ std::unique_ptr<Bord> Bord::solve(int d)
                   std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
                   if (!buur->bezet())
                   {
-                     std::cout << "   " << ri << " lege buur\n";
+                     auto [rbu, kbu] = buur->get_rk();
+                     std::cout << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
                      int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
                      std::cout << "   " << ri << " kleur " << kl << "\n";
                      if (kl == ringkleur)
@@ -1054,7 +1067,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     std::cout << "maak bord\n";
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>(6);
+    std::unique_ptr<Bord> bord = std::make_unique<Bord>(10);
     //Bord bord(3);
     bord->zet_starttegel();
     bord->zet_ringkleur();
