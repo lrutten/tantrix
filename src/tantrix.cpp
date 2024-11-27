@@ -9,7 +9,7 @@
 #include <QPainter>
 
 constexpr int n_tegels  = 10;
-constexpr int bordsize  = 4; // was 12
+constexpr int bordsize  = 12; // was 12
 constexpr int zijden    = 6;
 constexpr int tegel_br  = 100;
 constexpr int boord     = tegel_br/2;
@@ -50,6 +50,17 @@ enum richting_t
 
 constexpr int n_kleuren    = 3;
 constexpr int n_richtingen = zijden;
+
+// Calculate the oppsite side
+int opposite(int ri)
+{
+   ri += zijden/2;
+   if (ri >= zijden)
+   {
+      ri -= zijden;
+   }
+   return ri;
+}
 
 class BoogFout
 {
@@ -157,6 +168,10 @@ public:
    void zet_tegel(std::unique_ptr<Tegel> tgl);
    bool bezet();
    kleur_t get_kleur(richting_t ri);
+   void zet_hoek(int ho)
+   {
+      hoek = ho;
+   }
    void inc_hoek()
    {
       hoek++;
@@ -272,9 +287,9 @@ void Plaats::boog2(QPainter &painter, kleur_t kleur)
    double ac = straal/sin(30.0/360.0*2.0*std::numbers::pi);
    double ab = ac*cos(30.0/360.0*2.0*std::numbers::pi);
    double boogr = ac - straal/2;
-   std::cout << "bc " << bc << "\n";
-   std::cout << "ac " << ac << "\n";
-   std::cout << "ab " << ab << "\n";
+   //std::cout << "bc " << bc << "\n";
+   //std::cout << "ac " << ac << "\n";
+   //std::cout << "ab " << ab << "\n";
    painter.drawArc(ab - boogr, -boogr, 2*boogr, 2*boogr, 16*150, 16*60); 
 }
 
@@ -291,7 +306,7 @@ void Plaats::boog3(QPainter &painter, kleur_t kleur)
 
 void Plaats::teken(QPainter &painter)
 {
-   std::cout << "Plaats::teken\n";
+   //std::cout << "Plaats::teken\n";
 
    // teken de rand met een zwarte lijn
    QPen pen;
@@ -354,6 +369,7 @@ void Plaats::teken(QPainter &painter)
     */
    if (tegel != nullptr)
    {
+      std::cout << "teken met tegel\n";
       static const QPoint zeshoek[6] = 
       {
          QPoint(xx0, yy0),
@@ -442,7 +458,7 @@ public:
    void zet_ringkleur();
    bool einde();
    void teken(QPainter &painter);
-   Bord solve();
+   std::unique_ptr<Bord> solve(int d);
 };
 
 
@@ -461,7 +477,7 @@ Bord::Bord(int n) : aantal(n),
       std::make_unique<Tegel>(B, 10, R, B, G, G, R, B)
    }
 {
-   std::cout << "Bord::Bord\n";
+   //std::cout << "Bord::Bord\n";
 
    /*
    tegels.push_back(std::make_unique<Tegel>(G,  1, B, R, G, G, B, R));
@@ -487,11 +503,12 @@ Bord::Bord(int n) : aantal(n),
    zetburen();
 }
 
-Bord::Bord(const Bord &van) : ringkleur(van.ringkleur)
+Bord::Bord(const Bord &van) : aantal(van.aantal), ringkleur(van.ringkleur)
 {
+   //std::cout << "Bord::Bord(Bord)\n";
    for (int i=0; i<n_tegels; i++)
    {
-      std::cout << "van.tegels[i] " << van.tegels[i] << "\n";
+      //std::cout << "van.tegels[i] " << van.tegels[i] << "\n";
       if (van.tegels[i] != nullptr)
       {
          tegels[i] = std::make_unique<Tegel>(*van.tegels[i]);
@@ -674,7 +691,7 @@ void Bord::zetburen()
             }
          }
       }
-      std::cout << "\n";
+      //std::cout << "\n";
    }
 }
 
@@ -688,6 +705,7 @@ int Bord::tegels_op_bord()
    int n = 0;
    for (int i=0; i<aantal; i++)
    {
+      //std::cout << "tob " << i << " " << aantal << "\n";
       if (tegels[i] == nullptr)
       {
          n++;
@@ -702,11 +720,14 @@ bool Bord::einde()
    return tegels_op_bord() == aantal;
 }
 
-Bord Bord::solve()
+std::unique_ptr<Bord> Bord::solve(int d)
 {
+   std::cout << "Bord::solve() " << d << "\n";
+   
    if (einde())
    {
-      return *this;
+      std::cout << "einde\n";
+      return std::make_unique<Bord>(*this);
    }
    else
    {
@@ -716,15 +737,7 @@ Bord Bord::solve()
          {
             if (plaatsen[r][k]->bezet())
             {
-               std::cout << "plaats niet nul\n";
-               /*
-                   Dit is ok en wordt later gebruikt
-               for (int ri=0; ri<zijden; ri++)
-               {
-                  int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
-                  std::cout << "   " << ri << " kleur " << kl << "\n";
-               }
-               */
+               std::cout << "plaats niet nul " << r  << " " << k <<"\n";
                
                // overloop de buren aan de 6 zijden
                for (int ri = 0; ri<zijden; ri++)
@@ -737,10 +750,10 @@ Bord Bord::solve()
                      std::cout << "   " << ri << " kleur " << kl << "\n";
                      if (kl == ringkleur)
                      {
-                        std::cout << "      is ringkleur\n";
+                        std::cout << "      is ringkleur " << r << " " << k << "\n";
                         
                         // deze zijde is geschikt
-                        // probeer elk van de overblijvende tegels te plaatsten
+                        // probeer elk van de overblijvende tegels te plaatsen
                         // bij buur
                         for (int ti=0; ti<aantal; ti++)
                         {
@@ -749,9 +762,29 @@ Bord Bord::solve()
                            {
                               // plaats de tegel in het bord
                               buur->zet_tegel(std::move(tegels[ti]));
-                              buur->inc_hoek();
-                              buur->inc_hoek();
-                              return *this;
+                              
+                              // overloop alle hoeken
+                              for (int ho=0; ho<zijden; ho++)
+                              {
+                                 buur->zet_hoek(ho);
+                                 
+                                 int opri   = opposite(ri);
+                                 int buurkl = buur->get_kleur((richting_t)opri);
+                                 
+                                 // past de tegel?
+                                 if (buurkl == ringkleur)
+                                 {
+                                    std::cout << "         kleur past\n";
+                                    std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
+                                    std::unique_ptr<Bord> bord3 = bord2->solve(d + 1);
+                                    
+                                    // zijn alle tegels geplaatst?
+                                    if (bord3->tegels_op_bord() == aantal)
+                                    {
+                                       return std::make_unique<Bord>(*bord3);
+                                    }
+                                 }
+                              }
                            }
                         }
                      }
@@ -765,13 +798,13 @@ Bord Bord::solve()
          }
       }
       
-      return *this;
+      return std::make_unique<Bord>(*this);
    }
 }
 
 void Bord::teken(QPainter &painter)
 {
-   std::cout << "Bord::teken()\n";
+   //std::cout << "Bord::teken()\n";
 
    for (int r=0; r<bordsize; r++)
    {
@@ -789,7 +822,7 @@ void Bord::teken(QPainter &painter)
          // voor de test
          //painter.drawLine( 0, 0, tegel_br/2, 0);
          
-         std::cout << "r k " << r << " " << k << "\n";
+         std::cout << "teken r k " << r << " " << k << "\n";
          if (plaatsen[r][k] != nullptr)
          {
             plaatsen[r][k]->teken(painter);
@@ -940,18 +973,20 @@ void Klok::paintEvent(QPaintEvent *)
 Venster::Venster(std::unique_ptr<Bord> brd, QWidget *parent)
     : bord(std::move(brd)), QWidget(parent)
 {
-    QTimer *timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, QOverload<>::of(&Venster::update));
-    timer->start(1000);
+   // niet nodig
+   //QTimer *timer = new QTimer(this);
+   //connect(timer, &QTimer::timeout, this, QOverload<>::of(&Venster::update));
+   //timer->start(1000);
 
-    setWindowTitle(tr("Venster"));
-    resize(200, 200);
+   constexpr int sz = 800;
+   setWindowTitle(tr("Venster"));
+   resize(sz, sz);
 }
 
 void Venster::paintEvent(QPaintEvent *)
 {
    const int side     = qMin(width(), height()); // zijde in pixels
-   std::cout << "veld_br " << veld_br << "\n";
+   //std::cout << "veld_br " << veld_br << "\n";
    QPainter painter(this);
 
    painter.setRenderHint(QPainter::Antialiasing);
@@ -976,7 +1011,7 @@ void Venster::paintEvent(QPaintEvent *)
    //pen.setColor(Qt::green);
    //painter.setPen(pen);
    
-   std::cout << "straal " << straal << "\n";
+   //std::cout << "straal " << straal << "\n";
 
    bord->teken(painter);
 }
@@ -1019,29 +1054,31 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     std::cout << "maak bord\n";
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>(3);
+    std::unique_ptr<Bord> bord = std::make_unique<Bord>(6);
+    //Bord bord(3);
     bord->zet_starttegel();
     bord->zet_ringkleur();
-    bord->solve();
-    bord->toon();
+    std::unique_ptr<Bord> res_bord = bord->solve(0);
+    //res_bord->toon();
 
+    /*
     std::unique_ptr<Bord> bord2;
     std::cout << "dit is bord2\n";
     
     // voor de test
     std::cout << "kopieer bord naar bord2\n";
     bord2 = std::make_unique<Bord>(*bord);
-    
+     */
     // voor de test
-    Bord bord3(3);
-    Bord bord4(bord3);
+    //Bord bord3(3);
+    //Bord bord4(bord3);
 
     // voor de test van de Tegel copy constructor
-    std::unique_ptr<Tegel> teg = std::make_unique<Tegel>(G,  1, B, R, G, G, B, R);
-    std::unique_ptr<Tegel> teg2;
-    teg2 = std::make_unique<Tegel>(*teg);
+    //std::unique_ptr<Tegel> teg = std::make_unique<Tegel>(G,  1, B, R, G, G, B, R);
+    //std::unique_ptr<Tegel> teg2;
+    //teg2 = std::make_unique<Tegel>(*teg);
     
-    Venster venster(std::move(bord));
+    Venster venster(std::move(res_bord));
     venster.show();
     return app.exec();
 }
