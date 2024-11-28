@@ -170,6 +170,7 @@ public:
    std::shared_ptr<Plaats> get_buur(richting_t ri);
    int aantal_buren();
    void zet_tegel(std::unique_ptr<Tegel> tgl);
+   std::unique_ptr<Tegel> haalop_tegel();
    bool bezet();
    kleur_t get_kleur(richting_t ri);
    void zet_hoek(int ho)
@@ -228,6 +229,11 @@ std::shared_ptr<Plaats> Plaats::get_buur(richting_t ri)
 void Plaats::zet_tegel(std::unique_ptr<Tegel> tgl)
 {
    tegel = std::move(tgl);
+}
+
+std::unique_ptr<Tegel> Plaats::haalop_tegel()
+{
+   return std::move(tegel);
 }
 
 bool Plaats::bezet()
@@ -484,6 +490,7 @@ public:
    void zetburen();
    void zet_starttegel();
    int  tegels_op_bord();
+   bool gelijke_kleuren();
    void zet_ringkleur();
    bool einde();
    void teken(QPainter &painter);
@@ -746,11 +753,53 @@ int Bord::tegels_op_bord()
    return n;
 }
 
+// test alle overgangen op gelijke kleur
+bool Bord::gelijke_kleuren()
+{
+   for (int r=0; r<bordsize; r++)
+   {
+      for (int k=0; k<bordsize; k++)
+      {
+         if (plaatsen[r][k]->bezet())
+         {
+            std::cout << "plaats niet nul " << r  << " " << k <<"\n";
+               
+            // overloop de buren aan de 6 zijden
+            for (int ri = 0; ri<zijden; ri++)
+            {
+               std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
+               if (buur != nullptr && buur->bezet())
+               {
+                  auto [rbu, kbu] = buur->get_rk();
+                  std::cout << "   " << ri << " volle buur " << rbu << " " << kbu << "\n";
+                  
+                  // haal de kleur van deze plaats in richting ri
+                  int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
+                  std::cout << "   " << ri << " kleur " << kl << "\n";
+                  
+                  // haal de tegenoverliggende kleur bij de buur
+                  int opri   = opposite(ri);
+                  int buurkl = buur->get_kleur((richting_t)opri);
+                  
+                  // bij verschil
+                  if (buurkl != kl)
+                  {
+                     return false;
+                  }
+               }
+            }
+         }
+      }
+   }
+   return true;
+}
+
 bool Bord::einde()
 {
    std::cout << "tegels_op_bord " << tegels_op_bord() << "\n";
    std::cout << "eerste aantal buren " << eerste->aantal_buren() << "\n";
-   return (tegels_op_bord() == aantal) && (eerste->aantal_buren() >= 2);
+   //return (tegels_op_bord() == aantal) && (eerste->aantal_buren() >= 2);
+   return (tegels_op_bord() == aantal && gelijke_kleuren());
 }
 
 std::unique_ptr<Bord> Bord::solve(int d)
@@ -822,6 +871,8 @@ std::unique_ptr<Bord> Bord::solve(int d)
                                     }
                                  }
                               }
+                              // plaats de tegel terug in de reserve
+                              tegels[ti] = buur->haalop_tegel();
                            }
                         }
                      }
@@ -1091,7 +1142,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     std::cout << "maak bord\n";
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>(3);
+    std::unique_ptr<Bord> bord = std::make_unique<Bord>(4);
     //Bord bord(3);
     bord->zet_starttegel();
     bord->zet_ringkleur();
