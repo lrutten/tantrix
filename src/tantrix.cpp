@@ -3,6 +3,7 @@
 #include <memory>
 #include <array>
 #include <vector>
+#include <optional>
 
 #include <QApplication>
 #include <QPushButton>
@@ -167,6 +168,7 @@ public:
    void toon();
    void zet_buur(richting_t ri, std::shared_ptr<Plaats> buur);
    std::shared_ptr<Plaats> get_buur(richting_t ri);
+   int aantal_buren();
    void zet_tegel(std::unique_ptr<Tegel> tgl);
    bool bezet();
    kleur_t get_kleur(richting_t ri);
@@ -248,6 +250,20 @@ kleur_t Plaats::get_kleur(richting_t ri)
    {
       return R; // rood
    }
+}
+
+int Plaats::aantal_buren()
+{
+   int n = 0;
+   for (int ri=0; ri<zijden;ri++)
+   {
+      std::shared_ptr<Plaats> buur = get_buur((richting_t)ri);
+      if (buur != nullptr && buur->bezet())
+      {
+         n++;
+      }
+   }
+   return n;
 }
 
 QColor naarQColor(kleur_t kleur)
@@ -380,7 +396,7 @@ void Plaats::teken(QPainter &painter)
     */
    if (tegel != nullptr)
    {
-      std::cout << "teken met tegel\n";
+      //std::cout << "teken met tegel\n";
       static const QPoint zeshoek[6] = 
       {
          QPoint(xx0, yy0),
@@ -457,6 +473,8 @@ private:
    int                                          aantal; // effectief aantal tegels in dit spel
    std::array<std::array<std::shared_ptr<Plaats>, bordsize>, bordsize> plaatsen;
    kleur_t                                      ringkleur;
+   std::shared_ptr<Plaats>                      eerste;
+   std::shared_ptr<Plaats>                      laatste;
    
 public:
    Bord(int n);
@@ -473,7 +491,7 @@ public:
 };
 
 
-Bord::Bord(int n) : aantal(n), 
+Bord::Bord(int n) : aantal(n), eerste(nullptr), laatste(nullptr),
    tegels
    {
       std::make_unique<Tegel>(G,  1, B, R, G, G, B, R),
@@ -515,7 +533,7 @@ Bord::Bord(int n) : aantal(n),
    zetburen();
 }
 
-Bord::Bord(const Bord &van) : aantal(van.aantal), ringkleur(van.ringkleur)
+Bord::Bord(const Bord &van) : aantal(van.aantal), ringkleur(van.ringkleur), eerste(van.eerste), laatste(van.laatste)
 {
    //std::cout << "Bord::Bord(Bord)\n";
    for (int i=0; i<n_tegels; i++)
@@ -709,7 +727,8 @@ void Bord::zetburen()
 
 void Bord::zet_starttegel()
 {
-   plaatsen[bordsize/2][bordsize/2]->zet_tegel(std::move(tegels[0])); 
+   plaatsen[bordsize/2][bordsize/2]->zet_tegel(std::move(tegels[0]));
+   eerste = plaatsen[bordsize/2][bordsize/2];
 }
 
 int Bord::tegels_op_bord()
@@ -729,7 +748,9 @@ int Bord::tegels_op_bord()
 
 bool Bord::einde()
 {
-   return tegels_op_bord() == aantal;
+   std::cout << "tegels_op_bord " << tegels_op_bord() << "\n";
+   std::cout << "eerste aantal buren " << eerste->aantal_buren() << "\n";
+   return (tegels_op_bord() == aantal) && (eerste->aantal_buren() >= 2);
 }
 
 std::unique_ptr<Bord> Bord::solve(int d)
@@ -738,7 +759,7 @@ std::unique_ptr<Bord> Bord::solve(int d)
    
    if (einde())
    {
-      std::cout << "einde\n";
+      std::cout << "einde1\n";
       return std::make_unique<Bord>(*this);
    }
    else
@@ -755,7 +776,7 @@ std::unique_ptr<Bord> Bord::solve(int d)
                for (int ri = 0; ri<zijden; ri++)
                {
                   std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
-                  if (!buur->bezet())
+                  if (buur != nullptr && !buur->bezet())
                   {
                      auto [rbu, kbu] = buur->get_rk();
                      std::cout << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
@@ -775,6 +796,7 @@ std::unique_ptr<Bord> Bord::solve(int d)
                            {
                               // plaats de tegel in het bord
                               buur->zet_tegel(std::move(tegels[ti]));
+                              laatste = buur;
                               
                               // overloop alle hoeken
                               for (int ho=0; ho<zijden; ho++)
@@ -792,8 +814,10 @@ std::unique_ptr<Bord> Bord::solve(int d)
                                     std::unique_ptr<Bord> bord3 = bord2->solve(d + 1);
                                     
                                     // zijn alle tegels geplaatst?
-                                    if (bord3->tegels_op_bord() == aantal)
+                                    //if (bord3->tegels_op_bord() == aantal)
+                                    if (bord3->einde())
                                     {
+                                       std::cout << "einde2\n";
                                        return std::make_unique<Bord>(*bord3);
                                     }
                                  }
@@ -835,7 +859,7 @@ void Bord::teken(QPainter &painter)
          // voor de test
          //painter.drawLine( 0, 0, tegel_br/2, 0);
          
-         std::cout << "teken r k " << r << " " << k << "\n";
+         //std::cout << "teken r k " << r << " " << k << "\n";
          if (plaatsen[r][k] != nullptr)
          {
             plaatsen[r][k]->teken(painter);
@@ -1067,7 +1091,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     std::cout << "maak bord\n";
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>(10);
+    std::unique_ptr<Bord> bord = std::make_unique<Bord>(3);
     //Bord bord(3);
     bord->zet_starttegel();
     bord->zet_ringkleur();
