@@ -10,7 +10,9 @@
 #include <QPainter>
 
 constexpr int n_tegels  = 10;
-constexpr int bordsize  = 12; // was 12
+constexpr int bordsize  = 6;  // was 12
+constexpr int startr    = 3;  // bordsize/2;
+constexpr int startk    = 3;  //bordsize/2;
 constexpr int zijden    = 6;
 constexpr int tegel_br  = 100;
 constexpr int boord     = tegel_br/2;
@@ -491,6 +493,7 @@ public:
    void zet_starttegel();
    int  tegels_op_bord();
    bool gelijke_kleuren();
+   bool ring_niet_dood();
    void zet_ringkleur();
    bool einde();
    void teken(QPainter &painter);
@@ -734,7 +737,7 @@ void Bord::zetburen()
 
 void Bord::zet_starttegel()
 {
-   plaatsen[bordsize/2][bordsize/2]->zet_tegel(std::move(tegels[0]));
+   plaatsen[startr][startk]->zet_tegel(std::move(tegels[0]));
    eerste = plaatsen[bordsize/2][bordsize/2];
 }
 
@@ -762,30 +765,98 @@ bool Bord::gelijke_kleuren()
       {
          if (plaatsen[r][k]->bezet())
          {
-            std::cout << "plaats niet nul " << r  << " " << k <<"\n";
+            //std::cout << "plaats niet nul " << r  << " " << k <<"\n";
                
             // overloop de buren aan de 6 zijden
             for (int ri = 0; ri<zijden; ri++)
             {
                std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
-               if (buur != nullptr && buur->bezet())
+               if (buur != nullptr)
                {
-                  auto [rbu, kbu] = buur->get_rk();
-                  std::cout << "   " << ri << " volle buur " << rbu << " " << kbu << "\n";
+                  if (buur->bezet())
+                  {
+                     // er is een overgang naar een buur
+                     auto [rbu, kbu] = buur->get_rk();
+                     //std::cout << "   " << ri << " volle buur " << rbu << " " << kbu << "\n";
                   
+                     // haal de kleur van deze plaats in richting ri
+                     int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
+                     //std::cout << "   " << ri << " kleur " << kl << "\n";
+                  
+                     // haal de tegenoverliggende kleur bij de buur
+                     int opri   = opposite(ri);
+                     int buurkl = buur->get_kleur((richting_t)opri);
+                  
+                     // bij verschil
+                     if (buurkl != kl)
+                     {
+                        return false;
+                     }
+                  }
+               }
+               /*
+               else
+               {
+                  // er is geen buur aan deze zijde
+
                   // haal de kleur van deze plaats in richting ri
                   int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
-                  std::cout << "   " << ri << " kleur " << kl << "\n";
-                  
-                  // haal de tegenoverliggende kleur bij de buur
-                  int opri   = opposite(ri);
-                  int buurkl = buur->get_kleur((richting_t)opri);
-                  
-                  // bij verschil
-                  if (buurkl != kl)
+                  //std::cout << "test dood kl " << kl << "\n";
+                  //std::cout << "test dood ringkleur " << ringkleur << "\n";
+                  if (kl == ringkleur)
                   {
+                     //std::cout << "ring loopt dood\n";
                      return false;
                   }
+               }
+                */
+            }
+         }
+      }
+   }
+   return true;
+}
+
+// test ring aaneensluitend
+bool Bord::ring_niet_dood()
+{
+   //std::cout << "ring niet dood\n";
+
+   for (int r=0; r<bordsize; r++)
+   {
+      for (int k=0; k<bordsize; k++)
+      {
+         if (plaatsen[r][k]->bezet())
+         {
+            //std::cout << "   dood plaats niet nul " << r  << " " << k <<"\n";
+               
+            // overloop de buren aan de 6 zijden
+            for (int ri = 0; ri<zijden; ri++)
+            {
+               std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
+               if (buur != nullptr)
+               {
+                  // er is een buur aan deze zijde
+
+                  if (!buur->bezet())
+                  {
+                     // deze plaats is leeg
+                     
+                     // haal de kleur van deze plaats in richting ri
+                     int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
+                     //std::cout << "      test dood kl " << kl << "\n";
+                     //std::cout << "      test dood ringkleur " << ringkleur << "\n";
+                     if (kl == ringkleur)
+                     {
+                        std::cout << "         ring loopt dood\n";
+                        return false;
+                     }
+                  }
+               }
+               else
+               {
+                  // deze plaats zit aan de rand
+                  return false;
                }
             }
          }
@@ -796,15 +867,15 @@ bool Bord::gelijke_kleuren()
 
 bool Bord::einde()
 {
-   std::cout << "tegels_op_bord " << tegels_op_bord() << "\n";
-   std::cout << "eerste aantal buren " << eerste->aantal_buren() << "\n";
+   //std::cout << "tegels_op_bord " << tegels_op_bord() << "\n";
+   //std::cout << "eerste aantal buren " << eerste->aantal_buren() << "\n";
    //return (tegels_op_bord() == aantal) && (eerste->aantal_buren() >= 2);
-   return (tegels_op_bord() == aantal && gelijke_kleuren());
+   return (tegels_op_bord() == aantal && gelijke_kleuren() && ring_niet_dood());
 }
 
 std::unique_ptr<Bord> Bord::solve(int d)
 {
-   std::cout << "Bord::solve() " << d << "\n";
+   //std::cout << "Bord::solve() " << d << "\n";
    
    if (einde())
    {
@@ -819,7 +890,7 @@ std::unique_ptr<Bord> Bord::solve(int d)
          {
             if (plaatsen[r][k]->bezet())
             {
-               std::cout << "plaats niet nul " << r  << " " << k <<"\n";
+               //std::cout << "plaats niet nul " << r  << " " << k <<"\n";
                
                // overloop de buren aan de 6 zijden
                for (int ri = 0; ri<zijden; ri++)
@@ -828,12 +899,12 @@ std::unique_ptr<Bord> Bord::solve(int d)
                   if (buur != nullptr && !buur->bezet())
                   {
                      auto [rbu, kbu] = buur->get_rk();
-                     std::cout << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
+                     //std::cout << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
                      int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
-                     std::cout << "   " << ri << " kleur " << kl << "\n";
+                     //std::cout << "   " << ri << " kleur " << kl << "\n";
                      if (kl == ringkleur)
                      {
-                        std::cout << "      is ringkleur " << r << " " << k << "\n";
+                        //std::cout << "      is ringkleur " << r << " " << k << "\n";
                         
                         // deze zijde is geschikt
                         // probeer elk van de overblijvende tegels te plaatsen
@@ -858,7 +929,7 @@ std::unique_ptr<Bord> Bord::solve(int d)
                                  // past de tegel?
                                  if (buurkl == ringkleur)
                                  {
-                                    std::cout << "         kleur past\n";
+                                    //std::cout << "         kleur past\n";
                                     std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
                                     std::unique_ptr<Bord> bord3 = bord2->solve(d + 1);
                                     
@@ -879,7 +950,7 @@ std::unique_ptr<Bord> Bord::solve(int d)
                   }
                   else
                   {
-                     std::cout << "   " << ri << " volle buur\n";
+                     //std::cout << "   " << ri << " volle buur\n";
                   }
                }
             }
@@ -1142,7 +1213,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     std::cout << "maak bord\n";
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>(4);
+    std::unique_ptr<Bord> bord = std::make_unique<Bord>(10);
     //Bord bord(3);
     bord->zet_starttegel();
     bord->zet_ringkleur();
