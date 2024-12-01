@@ -4,6 +4,9 @@
 #include <array>
 #include <vector>
 #include <optional>
+#include <concepts>
+#include <coroutine>
+#include <exception>
 
 #include <QApplication>
 #include <QPushButton>
@@ -474,6 +477,102 @@ void Plaats::teken(QPainter &painter)
    }
 }
 
+
+
+template<typename T>
+struct Generator
+{
+   struct promise_type;
+   using handle_type = std::coroutine_handle<promise_type>;
+
+   struct promise_type
+   {
+      T value_;
+      std::exception_ptr exception_;
+
+      Generator get_return_object()
+      {
+         std::cout << "get_return_object()\n";
+         return Generator(handle_type::from_promise(*this));
+      }
+      std::suspend_always initial_suspend()
+      {
+         std::cout << "intial_suspend()\n";
+         return {};
+      }
+      std::suspend_always final_suspend() noexcept(true)
+      {
+         std::cout << "final_suspend()\n";
+         return {};
+      }
+      void unhandled_exception()
+      {
+         std::cout << "unhandled_exception()\n";
+         exception_ = std::current_exception();
+      }
+      template<std::convertible_to<T> From> // C++20 concept
+      std::suspend_always yield_value(From &&from)
+      {
+         std::cout << "yield_value\n";
+         value_ = std::forward<From>(from);
+         return {};
+      }
+      void return_void()
+      {
+         std::cout << "return_void()\n";
+      }
+   };
+
+   handle_type h_;
+
+   Generator(handle_type h) : h_(h)
+   {
+      std::cout << "Generator()\n";
+   }
+   ~Generator()
+   {
+      std::cout << "~Generator()\n";
+      h_.destroy();
+   }
+   explicit operator bool()
+   {
+      std::cout << "operator bool\n";
+      fill();
+      return !h_.done();
+   }
+   T operator()()
+   {
+      std::cout << "operator()\n";
+      fill();
+      full_ = false;
+      return std::move(h_.promise().value_);
+   }
+
+private:
+   bool full_ = false;
+
+   void fill()
+   {
+      std::cout << "fill()\n";
+      if (!full_)
+      {
+         std::cout << "   not full_\n";
+         h_();
+         if (h_.promise().exception_)
+         {
+            std::cout << "      exception\n";
+            std::rethrow_exception(h_.promise().exception_);
+         }
+         full_ = true;
+      }
+      else
+      {
+         std::cout << "   full_\n";
+      }
+   }
+};
+
+
 class Bord
 {
 private:
@@ -498,6 +597,7 @@ public:
    bool einde();
    void teken(QPainter &painter);
    std::unique_ptr<Bord> solve(int d);
+   Generator<std::unique_ptr<Bord>> solve_step(int d);
 };
 
 
@@ -960,6 +1060,122 @@ std::unique_ptr<Bord> Bord::solve(int d)
       return std::make_unique<Bord>(*this);
    }
 }
+
+
+
+/*
+Generator<unsigned> count()
+{
+   for (unsigned i = 0; i < 3;)
+   {
+      co_yield i++;
+   }
+}
+ */
+
+Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
+{
+   //std::cout << "Bord::solve() " << d << "\n";
+   
+   if (einde())
+   {
+      std::cout << "einde1\n";
+      //return std::make_unique<Bord>(*this);
+      co_yield std::make_unique<Bord>(*this);
+   }
+   else
+   {
+      for (int r=0; r<bordsize; r++)
+      {
+         for (int k=0; k<bordsize; k++)
+         {
+            if (plaatsen[r][k]->bezet())
+            {
+               //std::cout << "plaats niet nul " << r  << " " << k <<"\n";
+               
+               // overloop de buren aan de 6 zijden
+               for (int ri = 0; ri<zijden; ri++)
+               {
+                  std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
+                  if (buur != nullptr && !buur->bezet())
+                  {
+                     auto [rbu, kbu] = buur->get_rk();
+                     //std::cout << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
+                     int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
+                     //std::cout << "   " << ri << " kleur " << kl << "\n";
+                     if (kl == ringkleur)
+                     {
+                        //std::cout << "      is ringkleur " << r << " " << k << "\n";
+                        
+                        // deze zijde is geschikt
+                        // probeer elk van de overblijvende tegels te plaatsen
+                        // bij buur
+                        for (int ti=0; ti<aantal; ti++)
+                        {
+                           // is de tegel beschikbaar?
+                           if (tegels[ti] != nullptr)
+                           {
+                              // plaats de tegel in het bord
+                              buur->zet_tegel(std::move(tegels[ti]));
+                              laatste = buur;
+                              
+                              // overloop alle hoeken
+                              for (int ho=0; ho<zijden; ho++)
+                              {
+                                 buur->zet_hoek(ho);
+                                 
+                                 int opri   = opposite(ri);
+                                 int buurkl = buur->get_kleur((richting_t)opri);
+                                 
+                                 // past de tegel?
+                                 if (buurkl == ringkleur)
+                                 {
+                                    //std::cout << "         kleur past\n";
+                                    std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
+                                    std::unique_ptr<Bord> bord3 = bord2->solve_step(d + 1);
+                                    
+                                    // zijn alle tegels geplaatst?
+                                    //if (bord3->tegels_op_bord() == aantal)
+                                    if (bord3->einde())
+                                    {
+                                       std::cout << "einde2\n";
+                                       //return std::make_unique<Bord>(*bord3);
+                                       co_yield std::make_unique<Bord>(*bord3);
+                                    }
+                                 }
+                              }
+                              // plaats de tegel terug in de reserve
+                              tegels[ti] = buur->haalop_tegel();
+                           }
+                        }
+                     }
+                  }
+                  else
+                  {
+                     //std::cout << "   " << ri << " volle buur\n";
+                  }
+               }
+            }
+         }
+      }
+      
+      //return std::make_unique<Bord>(*this);
+      co_yield std::make_unique<Bord>(*this);
+   }
+}
+
+
+void Bord::solve_co()
+{
+   auto gen = solve_step(0);
+   while (gen)
+   {
+      std::cout << "counter6: " << gen() << std::endl;
+   }
+}
+
+
+
 
 void Bord::teken(QPainter &painter)
 {
