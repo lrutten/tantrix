@@ -7,6 +7,7 @@
 #include <concepts>
 #include <coroutine>
 #include <exception>
+#include <utility>
 
 #include <QApplication>
 #include <QPushButton>
@@ -478,6 +479,8 @@ void Plaats::teken(QPainter &painter)
 }
 
 
+/*
+ * eerste versie
 
 template<typename T>
 struct Generator
@@ -571,6 +574,94 @@ private:
       }
    }
 };
+ */
+
+// tweede versie
+template<typename T>
+class Generator
+{
+public:
+   struct promise_type;
+   using promise_handle_t = std::coroutine_handle<promise_type>;
+   explicit Generator(promise_handle_t h) : handle(h)
+   {
+   }
+   explicit Generator(Generator &&generator) : handle(std::exchange(generator.handle, {}))
+   {
+   }
+   ~Generator()
+   {
+      if (handle)
+      {
+         handle.destroy();
+      }
+   }
+   Generator(Generator &) = delete;
+   Generator&operator=(Generator &) = delete;
+   
+   struct promise_type
+   {
+      Generator get_return_object()
+      {
+         std::cout << "get_return_object\n";
+         return Generator{std::coroutine_handle<promise_type>::from_promise(*this)};
+      }
+
+      void unhandled_exception() noexcept
+      {
+         std::cout << "unhandled_exception\n";
+      }
+
+      void return_void() noexcept
+      {
+         std::cout << "return_void\n";
+      }
+
+      std::suspend_never initial_suspend() noexcept
+      {
+         std::cout << "initial_suspend\n";
+         return {};
+      }
+      std::suspend_never final_suspend() noexcept
+      {
+         std::cout << "final_suspend\n";
+         return {};
+      }
+      std::suspend_always yield_value(T t)
+      {
+         v = std::move(t);
+         return {};
+      }
+      
+   //private:
+      T v{};
+   };
+
+   bool has_next()
+   {
+      return !handle.done();
+   }
+   
+   T next()
+   {
+      handle.resume();
+      return handle.promise().v;
+   }
+
+   void resume()
+   {
+      handle.resume();
+   }
+
+   T value()
+   {
+      std::cout << "value " << handle.promise().v << "\n";
+      return std::move(handle.promise().v);
+   }
+
+private:
+   std::coroutine_handle<promise_type> handle;
+};
 
 
 class Bord
@@ -598,6 +689,7 @@ public:
    void teken(QPainter &painter);
    std::unique_ptr<Bord> solve(int d);
    Generator<std::unique_ptr<Bord>> solve_step(int d);
+   std::unique_ptr<Bord> solve_co();
 };
 
 
@@ -1131,8 +1223,8 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
                                  if (buurkl == ringkleur)
                                  {
                                     //std::cout << "         kleur past\n";
-                                    std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
-                                    std::unique_ptr<Bord> bord3 = bord2->solve_step(d + 1);
+                                    const std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
+                                    std::unique_ptr<Bord> bord3 = std::move(bord2->solve_step(d + 1).value());
                                     
                                     // zijn alle tegels geplaatst?
                                     //if (bord3->tegels_op_bord() == aantal)
@@ -1164,14 +1256,15 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
    }
 }
 
-
-void Bord::solve_co()
+std::unique_ptr<Bord> Bord::solve_co()
 {
    auto gen = solve_step(0);
-   while (gen)
+   while (!gen.has_next())
    {
-      std::cout << "counter6: " << gen() << std::endl;
+      std::cout << "counter6: " << gen.value() << std::endl;
+      gen.resume();
    }
+   return gen.value();
 }
 
 
@@ -1429,11 +1522,14 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     std::cout << "maak bord\n";
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>(10);
+    std::unique_ptr<Bord> bord = std::make_unique<Bord>(4);
     //Bord bord(3);
     bord->zet_starttegel();
     bord->zet_ringkleur();
     std::unique_ptr<Bord> res_bord = bord->solve(0);
+    
+    std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(4);
+    std::unique_ptr<Bord> res_bord2 = bord2->solve_co();
     //res_bord->toon();
 
     /*
@@ -1453,7 +1549,7 @@ int main(int argc, char *argv[])
     //std::unique_ptr<Tegel> teg2;
     //teg2 = std::make_unique<Tegel>(*teg);
     
-    Venster venster(std::move(res_bord));
+    Venster venster(std::move(res_bord2));
     venster.show();
     return app.exec();
 }
