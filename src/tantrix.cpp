@@ -69,6 +69,16 @@ int opposite(int ri)
    return ri;
 }
 
+std::string l(int d)
+{
+   std::string str = "";
+   for (int i=0; i<d; i++)
+   {
+      str += "   ";
+   }
+   return str;
+}
+
 class BoogFout
 {
 };
@@ -576,6 +586,8 @@ private:
 };
  */
 
+constexpr bool testgen = false;
+
 // tweede versie
 template<typename T>
 class Generator
@@ -585,78 +597,104 @@ public:
    using promise_handle_t = std::coroutine_handle<promise_type>;
    explicit Generator(promise_handle_t h) : handle(h)
    {
+      if (testgen) std::cout << "Generator(promise_handle_t h)\n";
    }
    explicit Generator(Generator &&generator) : handle(std::exchange(generator.handle, {}))
    {
+      if (testgen) std::cout << "Generator(Generator &&generator)\n";
    }
    ~Generator()
    {
+      if (testgen) std::cout << "~Generator()\n";
       if (handle)
       {
+         if (testgen) std::cout << "   destroy()\n";
          handle.destroy();
       }
    }
    Generator(Generator &) = delete;
-   Generator&operator=(Generator &) = delete;
+   Generator &operator=(Generator &) = delete;
    
    struct promise_type
    {
       Generator get_return_object()
       {
-         std::cout << "get_return_object\n";
+         if (testgen) std::cout << "get_return_object\n";
          return Generator{std::coroutine_handle<promise_type>::from_promise(*this)};
       }
 
       void unhandled_exception() noexcept
       {
-         std::cout << "unhandled_exception\n";
+         if (testgen) std::cout << "unhandled_exception\n";
       }
 
       void return_void() noexcept
       {
-         std::cout << "return_void\n";
+         if (testgen) std::cout << "return_void\n";
       }
 
-      std::suspend_never initial_suspend() noexcept
+      std::suspend_always initial_suspend() noexcept
       {
-         std::cout << "initial_suspend\n";
+         ended = false;
+         if (testgen) std::cout << "initial_suspend\n";
          return {};
       }
-      std::suspend_never final_suspend() noexcept
+      
+      // Hier moet suspend_always teruggegeven worden,
+      // anders zal done() nooit false teruggeven
+      // en wordt het het einde van de coroutine niet herkend.
+      std::suspend_always final_suspend() noexcept
       {
-         std::cout << "final_suspend\n";
+         if (testgen) std::cout << "final_suspend\n";
+         ended = true;
          return {};
       }
       std::suspend_always yield_value(T t)
       {
+         if (testgen) std::cout << "yield_value\n";
          v = std::move(t);
          return {};
       }
       
    //private:
+      bool ended;
       T v{};
    };
 
-   bool has_next()
+   bool done()
    {
-      return !handle.done();
+      return handle.promise().ended || handle.done();
    }
    
    T next()
    {
       handle.resume();
-      return handle.promise().v;
+      if (testgen) std::cout << "next v " << handle.promise().v << "\n";
+      return std::move(handle.promise().v);
    }
 
    void resume()
    {
+      if (testgen) std::cout << "resume\n";
       handle.resume();
    }
-
-   T value()
+   
+   T last()
    {
-      std::cout << "value " << handle.promise().v << "\n";
-      return std::move(handle.promise().v);
+      if (testgen) std::cout << "last\n";
+
+      T lastval = nullptr;
+      while (!done())
+      {
+         T val = next();
+         if (testgen) std::cout << "last val " << val << std::endl;
+         if (val != nullptr)
+         {
+            lastval = std::move(val);
+         }
+      }
+
+      return std::move(lastval);
    }
 
 private:
@@ -1040,7 +1078,7 @@ bool Bord::ring_niet_dood()
                      //std::cout << "      test dood ringkleur " << ringkleur << "\n";
                      if (kl == ringkleur)
                      {
-                        std::cout << "         ring loopt dood\n";
+                        //std::cout << "         ring loopt dood\n";
                         return false;
                      }
                   }
@@ -1155,35 +1193,28 @@ std::unique_ptr<Bord> Bord::solve(int d)
 
 
 
-/*
-Generator<unsigned> count()
-{
-   for (unsigned i = 0; i < 3;)
-   {
-      co_yield i++;
-   }
-}
- */
 
 Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
 {
-   //std::cout << "Bord::solve() " << d << "\n";
+   //std::cout << l(d) << "Bord::solve_step() " << d << "\n";
    
    if (einde())
    {
-      std::cout << "einde1\n";
+      //std::cout << l(d+1) << "einde1 yield 1\n";
       //return std::make_unique<Bord>(*this);
       co_yield std::make_unique<Bord>(*this);
    }
    else
    {
+      //std::cout << l(d+1) << "geen einde1\n";
       for (int r=0; r<bordsize; r++)
       {
          for (int k=0; k<bordsize; k++)
          {
+            //std::cout << "plaats " << r  << " " << k <<"\n";
             if (plaatsen[r][k]->bezet())
             {
-               //std::cout << "plaats niet nul " << r  << " " << k <<"\n";
+               //std::cout << l(d+2) << "plaats niet nul " << r  << " " << k <<"\n";
                
                // overloop de buren aan de 6 zijden
                for (int ri = 0; ri<zijden; ri++)
@@ -1192,12 +1223,12 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
                   if (buur != nullptr && !buur->bezet())
                   {
                      auto [rbu, kbu] = buur->get_rk();
-                     //std::cout << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
+                     //std::cout << l(d+3) << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
                      int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
-                     //std::cout << "   " << ri << " kleur " << kl << "\n";
+                     //std::cout << l(d+3) << "   " << ri << " kleur " << kl << "\n";
                      if (kl == ringkleur)
                      {
-                        //std::cout << "      is ringkleur " << r << " " << k << "\n";
+                        //std::cout << l(d+4) << "is ringkleur " << r << " " << k << "\n";
                         
                         // deze zijde is geschikt
                         // probeer elk van de overblijvende tegels te plaatsen
@@ -1222,15 +1253,15 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
                                  // past de tegel?
                                  if (buurkl == ringkleur)
                                  {
-                                    //std::cout << "         kleur past\n";
+                                    //std::cout << l(d+5) << "kleur past\n";
                                     const std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
-                                    std::unique_ptr<Bord> bord3 = std::move(bord2->solve_step(d + 1).value());
+                                    std::unique_ptr<Bord> bord3 = std::move(bord2->solve_step(d + 1).next());
                                     
                                     // zijn alle tegels geplaatst?
                                     //if (bord3->tegels_op_bord() == aantal)
-                                    if (bord3->einde())
+                                    if (bord3 != nullptr && bord3->einde())
                                     {
-                                       std::cout << "einde2\n";
+                                       //std::cout << l(d+6) << "einde2 yield 2\n";
                                        //return std::make_unique<Bord>(*bord3);
                                        co_yield std::make_unique<Bord>(*bord3);
                                     }
@@ -1252,19 +1283,61 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
       }
       
       //return std::make_unique<Bord>(*this);
-      co_yield std::make_unique<Bord>(*this);
+      //std::cout << "yield 3\n";
+      //co_yield std::make_unique<Bord>(*this);
+      
+      //std::cout << "co_return\n";
+      co_return;
    }
+   std::cout << "solve_step end\n";
 }
 
 std::unique_ptr<Bord> Bord::solve_co()
 {
+   std::cout << "solve_co\n";
+
+   std::unique_ptr<Bord> last = nullptr;
    auto gen = solve_step(0);
-   while (!gen.has_next())
+   std::cout << "after return solve_step\n";
+   while (!gen.done())
    {
-      std::cout << "counter6: " << gen.value() << std::endl;
+      std::unique_ptr<Bord> val = gen.next();
+      std::cout << "solve_co val " << val << std::endl;
+      if (val != nullptr)
+      {
+         last = std::move(val);
+      }
+   }
+
+   /*   
+   auto gen = solve_step(0);
+   std::cout << "after return solve_step\n";
+   auto val = gen.value();
+   std::cout << "val a " << val << std::endl;
+   while (!gen.done())
+   {
+      std::cout << "before resume\n";
+      gen.resume();
+      
+      if (!gen.done())
+      {
+         val = gen.value();
+         std::cout << "val b " << val << std::endl;
+      }
+   }
+    */
+   
+   /*
+   auto gen = solve_step(0);
+   auto val = gen.value();
+   std::cout << "val " << val << std::endl;
+   
+   if (gen.has_next())
+   {
       gen.resume();
    }
-   return gen.value();
+    */
+   return std::move(last);
 }
 
 
@@ -1516,41 +1589,70 @@ int main4(int argc, char **argv)
    return app.exec();
 }
 
+/*
+ * test
+ */ 
+Generator<int> teller()
+{
+   for (int i = 0; i<8; i++)
+   {
+      co_yield i;
+   }
+}
+
+void main5()
+{
+   auto gen = teller();
+   while (!gen.done())
+   {
+      auto val = gen.next();
+      std::cout << "val " << val << "\n";
+   }
+}
+
 
 int main(int argc, char *argv[])
 {
-    QApplication app(argc, argv);
+   //test de Generator
+   //main5();
+   //return 0;
+   
+   QApplication app(argc, argv);
 
-    std::cout << "maak bord\n";
-    std::unique_ptr<Bord> bord = std::make_unique<Bord>(4);
-    //Bord bord(3);
-    bord->zet_starttegel();
-    bord->zet_ringkleur();
-    std::unique_ptr<Bord> res_bord = bord->solve(0);
-    
-    std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(4);
-    std::unique_ptr<Bord> res_bord2 = bord2->solve_co();
-    //res_bord->toon();
+   /*
+     eerste solver
+   std::cout << "maak bord\n";
+   std::unique_ptr<Bord> bord = std::make_unique<Bord>(4);
+   //Bord bord(3);
+   bord->zet_starttegel();
+   bord->zet_ringkleur();
+   std::unique_ptr<Bord> res_bord = bord->solve(0);
+    */
+   std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(5);
+   bord2->zet_starttegel();
+   bord2->zet_ringkleur();
+   std::unique_ptr<Bord> res_bord2 = bord2->solve_co();
+   //res_bord->toon();
 
-    /*
-    std::unique_ptr<Bord> bord2;
-    std::cout << "dit is bord2\n";
+   /*
+   std::unique_ptr<Bord> bord2;
+   std::cout << "dit is bord2\n";
     
-    // voor de test
-    std::cout << "kopieer bord naar bord2\n";
-    bord2 = std::make_unique<Bord>(*bord);
-     */
-    // voor de test
-    //Bord bord3(3);
-    //Bord bord4(bord3);
+   // voor de test
+   std::cout << "kopieer bord naar bord2\n";
+   bord2 = std::make_unique<Bord>(*bord);
+    */
+   // voor de test
+   //Bord bord3(3);
+   //Bord bord4(bord3);
 
-    // voor de test van de Tegel copy constructor
-    //std::unique_ptr<Tegel> teg = std::make_unique<Tegel>(G,  1, B, R, G, G, B, R);
-    //std::unique_ptr<Tegel> teg2;
-    //teg2 = std::make_unique<Tegel>(*teg);
+   // voor de test van de Tegel copy constructor
+   //std::unique_ptr<Tegel> teg = std::make_unique<Tegel>(G,  1, B, R, G, G, B, R);
+   //std::unique_ptr<Tegel> teg2;
+   //teg2 = std::make_unique<Tegel>(*teg);
     
-    Venster venster(std::move(res_bord2));
-    venster.show();
-    return app.exec();
+   Venster venster(std::move(res_bord2));
+   venster.show();
+   return app.exec();
 }
 
