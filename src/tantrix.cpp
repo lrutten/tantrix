@@ -8,6 +8,8 @@
 #include <coroutine>
 #include <exception>
 #include <utility>
+#include <sstream>
+
 
 #include <QApplication>
 #include <QPushButton>
@@ -94,6 +96,10 @@ private:
 public:
    Tegel(kleur_t hfd, int nr, kleur_t kl0, kleur_t kl1, kleur_t kl2, kleur_t kl3, kleur_t kl4, kleur_t kl5 );
    Tegel(const Tegel &van);
+   ~Tegel()
+   {
+      //std::cout << "~Tegel()\n";
+   }
    int getBegin(kleur_t kl)
    {
       return bogen[kl][0];
@@ -702,7 +708,11 @@ private:
 };
 
 
-class Bord
+class Bord;
+using Bord_p = std::unique_ptr<Bord>;
+//using Bord_p = std::shared_ptr<Bord>;
+
+class Bord //: public std::enable_shared_from_this<Bord>
 {
 private:
    std::array<std::unique_ptr<Tegel>, n_tegels> tegels; // alle mogelijk tegels
@@ -711,12 +721,19 @@ private:
    kleur_t                                      ringkleur;
    std::shared_ptr<Plaats>                      eerste;
    std::shared_ptr<Plaats>                      laatste;
+   int                                          nr;
+   static int                                   teller;
    
 public:
    Bord(int n);
    Bord (const Bord &van);
    //Bord &operator=(const Bord &van);
+   int get_nr()
+   {
+      return nr;
+   }
    void toon();
+   std::string toS();
    void zetburen();
    void zet_starttegel();
    int  tegels_op_bord();
@@ -726,12 +743,15 @@ public:
    bool einde();
    void teken(QPainter &painter);
    std::unique_ptr<Bord> solve(int d);
-   Generator<std::unique_ptr<Bord>> solve_step(int d);
-   std::unique_ptr<Bord> solve_co();
+   Generator<Bord_p> solve_step(int d);
+   Bord_p solve_co_all();
+   std::vector<Bord_p> solve_co_all_v();
 };
 
 
-Bord::Bord(int n) : aantal(n), eerste(nullptr), laatste(nullptr),
+int Bord::teller = 0;
+
+Bord::Bord(int n) : aantal(n), eerste(nullptr), laatste(nullptr), nr(teller++),
    tegels
    {
       std::make_unique<Tegel>(G,  1, B, R, G, G, B, R),
@@ -773,18 +793,20 @@ Bord::Bord(int n) : aantal(n), eerste(nullptr), laatste(nullptr),
    zetburen();
 }
 
-Bord::Bord(const Bord &van) : aantal(van.aantal), ringkleur(van.ringkleur), eerste(van.eerste), laatste(van.laatste)
+Bord::Bord(const Bord &van) : aantal(van.aantal), ringkleur(van.ringkleur), eerste(van.eerste), laatste(van.laatste), nr(teller++)
 {
-   //std::cout << "Bord::Bord(Bord)\n";
+   // std::cout << "Bord::Bord(Bord) van " << &van << "\n";
    for (int i=0; i<n_tegels; i++)
    {
-      //std::cout << "van.tegels[i] " << van.tegels[i] << "\n";
+      // std::cout << "van.tegels[i] " << van.tegels[i] << "\n";
       if (van.tegels[i] != nullptr)
       {
-         tegels[i] = std::make_unique<Tegel>(*van.tegels[i]);
+         // std::cout << "niet nul this " << this << " i " << i << "\n";
+         tegels[i] = std::make_unique<Tegel>(*(van.tegels[i]));
       }
       else
       {
+         //std::cout << "nul\n";
          tegels[i] = nullptr;
       }
    }
@@ -824,6 +846,14 @@ Bord &Bord::operator=(const Bord &van)
    return *this;
 }   
  */
+
+std::string Bord::toS()
+{
+   std::ostringstream s;
+   s << "bord " << nr << " " << this << " #t " << aantal;
+   return s.str();
+}
+
 void Bord::toon()
 {
    for (int i=0; i<n_tegels; i++)
@@ -1103,6 +1133,7 @@ bool Bord::einde()
    return (tegels_op_bord() == aantal && gelijke_kleuren() && ring_niet_dood());
 }
 
+
 std::unique_ptr<Bord> Bord::solve(int d)
 {
    //std::cout << "Bord::solve() " << d << "\n";
@@ -1193,10 +1224,13 @@ std::unique_ptr<Bord> Bord::solve(int d)
 
 
 
+/*
 
+   met unique_ptr voluit
+   
 Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
 {
-   //std::cout << l(d) << "Bord::solve_step() " << d << "\n";
+   std::cout << l(d) << "Bord::solve_step() " << d << " bord " << get_nr() << "\n";
    
    if (einde())
    {
@@ -1253,7 +1287,7 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
                                  // past de tegel?
                                  if (buurkl == ringkleur)
                                  {
-                                    //std::cout << l(d+5) << "kleur past\n";
+                                    std::cout << l(d+1) << "kleur past " << this << "\n";
                                     const std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
                                     std::unique_ptr<Bord> bord3 = std::move(bord2->solve_step(d + 1).next());
                                     
@@ -1263,12 +1297,20 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
                                     {
                                        //std::cout << l(d+6) << "einde2 yield 2\n";
                                        //return std::make_unique<Bord>(*bord3);
-                                       co_yield std::make_unique<Bord>(*bord3);
+                                       
+                                       // make a copy
+                                       //co_yield std::make_unique<Bord>(*bord3);
+                                       
+                                       // no copy
+                                       std::cout  << l(d+1) << "yield bord3 " << bord3->get_nr() << " " << bord3 << "\n"; 
+                                       co_yield std::move(bord3);
                                     }
                                  }
                               }
                               // plaats de tegel terug in de reserve
-                              tegels[ti] = buur->haalop_tegel();
+                              std::cout << l(d+1) << "plaats terug this " << this << " bord nr " << get_nr() << " ti " << ti << "\n"; 
+                              tegels[ti] = std::move(buur->haalop_tegel());
+                              std::cout << l(d+1) << "na haalop bord nr " << get_nr() << "\n";
                            }
                         }
                      }
@@ -1292,55 +1334,187 @@ Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
    std::cout << "solve_step end\n";
 }
 
-std::unique_ptr<Bord> Bord::solve_co()
+// Calculate all the solutions, not only the first
+std::unique_ptr<Bord> Bord::solve_co_all()
 {
-   std::cout << "solve_co\n";
+   std::cout << "solve_co_all\n";
 
+   constexpr int limit = 2;
+   int i = 0;
    std::unique_ptr<Bord> last = nullptr;
    auto gen = solve_step(0);
    std::cout << "after return solve_step\n";
    while (!gen.done())
    {
       std::unique_ptr<Bord> val = gen.next();
-      std::cout << "solve_co val " << val << std::endl;
+      std::cout << "solve_co_all val " << val << std::endl;
+      if (val != nullptr)
+      {
+         last = std::move(val);
+         
+         // for test
+         i++;
+         if (i >= limit)
+         {
+            return last;
+         }
+      }
+   }
+
+   return std::move(last);
+}
+ */
+
+
+Generator<Bord_p> Bord::solve_step(int d)
+{
+   std::cout << l(d) << "Bord::solve_step() " << d << " " << toS() << "\n";
+   
+   if (einde())
+   {
+      //std::cout << l(d+1) << "einde1 yield 1\n";
+      //return std::make_unique<Bord>(*this);
+      co_yield std::make_unique<Bord>(*this);
+      //co_yield shared_from_this();
+   }
+   else
+   {
+      //std::cout << l(d+1) << "geen einde1\n";
+      for (int r=0; r<bordsize; r++)
+      {
+         for (int k=0; k<bordsize; k++)
+         {
+            //std::cout << "plaats " << r  << " " << k <<"\n";
+            if (plaatsen[r][k]->bezet())
+            {
+               //std::cout << l(d+2) << "plaats niet nul " << r  << " " << k <<"\n";
+               
+               // overloop de buren aan de 6 zijden
+               for (int ri = 0; ri<zijden; ri++)
+               {
+                  std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
+                  if (buur != nullptr && !buur->bezet())
+                  {
+                     auto [rbu, kbu] = buur->get_rk();
+                     //std::cout << l(d+3) << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
+                     int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
+                     //std::cout << l(d+3) << "   " << ri << " kleur " << kl << "\n";
+                     if (kl == ringkleur)
+                     {
+                        //std::cout << l(d+4) << "is ringkleur " << r << " " << k << "\n";
+                        
+                        // deze zijde is geschikt
+                        // probeer elk van de overblijvende tegels te plaatsen
+                        // bij buur
+                        for (int ti=0; ti<aantal; ti++)
+                        {
+                           // is de tegel beschikbaar?
+                           if (tegels[ti] != nullptr)
+                           {
+                              // plaats de tegel in het bord
+                              buur->zet_tegel(std::move(tegels[ti]));
+                              laatste = buur;
+                              
+                              // overloop alle hoeken
+                              for (int ho=0; ho<zijden; ho++)
+                              {
+                                 buur->zet_hoek(ho);
+                                 
+                                 int opri   = opposite(ri);
+                                 int buurkl = buur->get_kleur((richting_t)opri);
+                                 
+                                 // past de tegel?
+                                 if (buurkl == ringkleur)
+                                 {
+                                    std::cout << l(d+1) << "kleur past " << this << "\n";
+                                    const Bord_p bord2 = std::make_unique<Bord>(*this);
+                                    //Bord_p bord3 = std::move(bord2->solve_step(d + 1).next());
+                                    Bord_p bord3 = bord2->solve_step(d + 1).next();
+                                    
+                                    // zijn alle tegels geplaatst?
+                                    //if (bord3->tegels_op_bord() == aantal)
+                                    if (bord3 != nullptr && bord3->einde())
+                                    {
+                                       //std::cout << l(d+6) << "einde2 yield 2\n";
+                                       //return std::make_unique<Bord>(*bord3);
+                                       
+                                       // make a copy
+                                       //co_yield std::make_unique<Bord>(*bord3);
+                                       
+                                       // no copy
+                                       std::cout  << l(d+1) << "yield bord3 " << bord3->get_nr() << " " << bord3 << "\n"; 
+                                       co_yield std::move(bord3);
+                                       //co_yield bord3;
+                                    }
+                                 }
+                              }
+                              // plaats de tegel terug in de reserve
+                              std::cout << l(d+1) << "plaats terug " << toS() << " ti " << ti << "\n"; 
+                              tegels[ti] = std::move(buur->haalop_tegel());
+                              std::cout << l(d+1) << "na haalop " << toS() << "\n";
+                           }
+                        }
+                     }
+                  }
+                  else
+                  {
+                     //std::cout << "   " << ri << " volle buur\n";
+                  }
+               }
+            }
+         }
+      }
+      
+      //return std::make_unique<Bord>(*this);
+      //std::cout << "yield 3\n";
+      //co_yield std::make_unique<Bord>(*this);
+      
+      //std::cout << "co_return\n";
+      co_return;
+   }
+   std::cout << "solve_step end\n";
+}
+
+// Calculate all the solutions, not only the first
+Bord_p Bord::solve_co_all()
+{
+   std::cout << "solve_co_all\n";
+
+   Bord_p last = nullptr;
+   auto gen = solve_step(0);
+   std::cout << "after return solve_step\n";
+   while (!gen.done())
+   {
+      Bord_p val = gen.next();
+      std::cout << "solve_co_all val " << val << std::endl;
       if (val != nullptr)
       {
          last = std::move(val);
       }
    }
 
-   /*   
-   auto gen = solve_step(0);
-   std::cout << "after return solve_step\n";
-   auto val = gen.value();
-   std::cout << "val a " << val << std::endl;
-   while (!gen.done())
-   {
-      std::cout << "before resume\n";
-      gen.resume();
-      
-      if (!gen.done())
-      {
-         val = gen.value();
-         std::cout << "val b " << val << std::endl;
-      }
-   }
-    */
-   
-   /*
-   auto gen = solve_step(0);
-   auto val = gen.value();
-   std::cout << "val " << val << std::endl;
-   
-   if (gen.has_next())
-   {
-      gen.resume();
-   }
-    */
    return std::move(last);
 }
 
+// Calculate all the solutions, not only the first
+std::vector<Bord_p> Bord::solve_co_all_v()
+{
+   std::cout << "solve_co_all_v\n";
+   std::vector<Bord_p> all; 
+   auto gen = solve_step(0);
+   std::cout << "after return solve_step\n";
+   while (!gen.done())
+   {
+      Bord_p val = gen.next();
+      std::cout << "solve_co_all val " << val << std::endl;
+      if (val != nullptr)
+      {
+         all.push_back(std::move(val));
+      }
+   }
 
+   return std::move(all);
+}
 
 
 void Bord::teken(QPainter &painter)
@@ -1403,15 +1577,20 @@ protected:
    void paintEvent(QPaintEvent *event) override;   
 };
 
+// -------------- Venster ---------------
 class Venster : public QWidget
 {
    Q_OBJECT
 private:
-   std::unique_ptr<Bord> bord;   
+   std::vector<Bord_p> borden;   
+   Generator<Bord_p>   gen;
+   bool                timer_ev;
+   int                 soli;
 
 public:
-   Venster(std::unique_ptr<Bord> brd, QWidget *parent = nullptr);
-
+   Venster(std::vector<Bord_p> brden, QWidget *parent = nullptr);
+   void update();
+   
 protected:
    void paintEvent(QPaintEvent *event) override;   
 };
@@ -1509,15 +1688,24 @@ void Klok::paintEvent(QPaintEvent *)
    }
 }
 
+// ----------- Venster ---------------
 
-
-Venster::Venster(std::unique_ptr<Bord> brd, QWidget *parent)
-    : bord(std::move(brd)), QWidget(parent)
+Venster::Venster(std::vector<Bord_p> brden, QWidget *parent)
+    : borden(std::move(brden)), 
+      QWidget(parent), 
+      //gen(brd->solve_step(0)),
+      gen(nullptr),
+      timer_ev(false),
+      soli(0)
 {
-   // niet nodig
-   //QTimer *timer = new QTimer(this);
-   //connect(timer, &QTimer::timeout, this, QOverload<>::of(&Venster::update));
-   //timer->start(1000);
+   // take the first solution
+   // bord = std::move(gen.next());
+   //std::cout << "eerste oplossing bord " << bord->toS() << std::endl;
+   
+   // wel nodig
+   QTimer *timer = new QTimer(this);
+   connect(timer, &QTimer::timeout, this, QOverload<>::of(&Venster::update));
+   timer->start(1000);
 
    constexpr int sz = 800;
    setWindowTitle(tr("Venster"));
@@ -1526,6 +1714,24 @@ Venster::Venster(std::unique_ptr<Bord> brd, QWidget *parent)
 
 void Venster::paintEvent(QPaintEvent *)
 {
+   /*
+   if (timer_ev)
+   {
+      std::cout << "timer_ev\n";
+      timer_ev = false;
+      
+      if (gen != nullptr && !gen.done())
+      {
+         Bord_p val = gen.next();
+         std::cout << "val " << val << std::endl;
+         if (val != nullptr)
+         {
+            bord = std::move(val);
+         }
+      }
+   }
+    */
+
    const int side     = qMin(width(), height()); // zijde in pixels
    //std::cout << "veld_br " << veld_br << "\n";
    QPainter painter(this);
@@ -1538,26 +1744,31 @@ void Venster::paintEvent(QPaintEvent *)
    const double sc = side / ((double)veld_br);
    painter.scale(sc, sc);
 
-   /*
-   QPen pen;
-   pen.setWidth(3);
-   pen.setColor(Qt::red);
-   //painter.setPen(QPen(Qt::red, O));
-   painter.setPen(pen);
-
-   // test diagonaal
-   painter.drawLine(boord, boord, veld_br-boord, veld_br-boord);
-    */
-
-   //pen.setColor(Qt::green);
-   //painter.setPen(pen);
-   
-   //std::cout << "straal " << straal << "\n";
-
-   bord->teken(painter);
+   borden[soli]->teken(painter);
 }
 
 
+void Venster::update()
+{
+   static int ctr = 0;
+   /*
+   std::unique_ptr<Bord> sol_bord = std::move(gen.next());
+   std::cout << "sol_bord " << sol_bord << std::endl;
+   if (sol_bord != nullptr)
+      bord = std::move(sol_bord);
+      QWidget::update();
+   }
+    */
+   
+   soli++;
+   if (soli >= borden.size())
+   {
+      soli = 0;
+   }
+   std::cout << "update " << ctr++ << " soli " << soli << "\n";
+   //timer_ev = true;
+   QWidget::update();
+}
 
 // ------------- main -----------------
 
@@ -1628,30 +1839,17 @@ int main(int argc, char *argv[])
    bord->zet_ringkleur();
    std::unique_ptr<Bord> res_bord = bord->solve(0);
     */
-   std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(5);
+   Bord_p bord2 = std::make_unique<Bord>(7);
    bord2->zet_starttegel();
    bord2->zet_ringkleur();
-   std::unique_ptr<Bord> res_bord2 = bord2->solve_co();
+
+   std::vector<Bord_p> all = bord2->solve_co_all_v();
+   std::cout << "all size " << all.size() << "\n";
    //res_bord->toon();
+   Venster venster(std::move(all));
 
-   /*
-   std::unique_ptr<Bord> bord2;
-   std::cout << "dit is bord2\n";
-    
-   // voor de test
-   std::cout << "kopieer bord naar bord2\n";
-   bord2 = std::make_unique<Bord>(*bord);
-    */
-   // voor de test
-   //Bord bord3(3);
-   //Bord bord4(bord3);
-
-   // voor de test van de Tegel copy constructor
-   //std::unique_ptr<Tegel> teg = std::make_unique<Tegel>(G,  1, B, R, G, G, B, R);
-   //std::unique_ptr<Tegel> teg2;
-   //teg2 = std::make_unique<Tegel>(*teg);
-    
-   Venster venster(std::move(res_bord2));
+   //Venster venster(std::move(bord2));
+   
    venster.show();
    return app.exec();
 }
