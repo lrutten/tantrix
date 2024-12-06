@@ -1368,6 +1368,8 @@ std::unique_ptr<Bord> Bord::solve_co_all()
 
 Generator<Bord_p> Bord::solve_step(int d)
 {
+   constexpr bool preliminary = false;
+
    std::cout << l(d) << "Bord::solve_step() " << d << " " << toS() << "\n";
    
    if (einde())
@@ -1427,24 +1429,37 @@ Generator<Bord_p> Bord::solve_step(int d)
                                  if (buurkl == ringkleur)
                                  {
                                     std::cout << l(d+1) << "kleur past " << this << "\n";
+
+                                    // yield the preliminary result
+                                    if (preliminary)
+                                    {
+                                       std::cout << l(d+1) << "yield prelim\n";
+                                       co_yield std::move(std::make_unique<Bord>(*this));
+                                       std::cout << l(d+1) << "na yield prelim\n";
+                                    }
+
+                                    // prepare the next recursive call
+                                    std::cout << l(d+1) << "prepare\n";
                                     const Bord_p bord2 = std::make_unique<Bord>(*this);
                                     //Bord_p bord3 = std::move(bord2->solve_step(d + 1).next());
                                     Bord_p bord3 = bord2->solve_step(d + 1).next();
                                     
-                                    // zijn alle tegels geplaatst?
-                                    //if (bord3->tegels_op_bord() == aantal)
-                                    if (bord3 != nullptr && bord3->einde())
+                                    if (preliminary && bord3 != nullptr && !bord3->einde())
                                     {
-                                       //std::cout << l(d+6) << "einde2 yield 2\n";
-                                       //return std::make_unique<Bord>(*bord3);
-                                       
-                                       // make a copy
-                                       //co_yield std::make_unique<Bord>(*bord3);
-                                       
-                                       // no copy
-                                       std::cout  << l(d+1) << "yield bord3 " << bord3->get_nr() << " " << bord3 << "\n"; 
-                                       co_yield std::move(bord3);
-                                       //co_yield bord3;
+                                       // return the preliminary result
+                                       co_yield std::move(std::make_unique<Bord>(*bord3));
+                                    }
+                                    else
+                                    // zijn alle tegels geplaatst?
+                                    if (bord3 != nullptr && 
+                                          (
+                                             bord3->einde()
+                                             // || bord3->tegels_op_bord() == aantal
+                                          )
+                                       )
+                                    {
+                                       std::cout  << l(d+1) << "yield bord3 " << bord3->get_nr() << " " << bord3 << "\n";
+                                       co_yield std::move(std::make_unique<Bord>(*bord3));
                                     }
                                  }
                               }
@@ -1506,7 +1521,7 @@ std::vector<Bord_p> Bord::solve_co_all_v()
    while (!gen.done())
    {
       Bord_p val = gen.next();
-      std::cout << "solve_co_all val " << val << std::endl;
+      std::cout << "solve_co_all_v val " << val << std::endl;
       if (val != nullptr)
       {
          all.push_back(std::move(val));
@@ -1839,7 +1854,7 @@ int main(int argc, char *argv[])
    bord->zet_ringkleur();
    std::unique_ptr<Bord> res_bord = bord->solve(0);
     */
-   Bord_p bord2 = std::make_unique<Bord>(7);
+   Bord_p bord2 = std::make_unique<Bord>(5);
    bord2->zet_starttegel();
    bord2->zet_ringkleur();
 
