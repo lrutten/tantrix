@@ -738,6 +738,7 @@ public:
    void zetburen();
    void zet_starttegel();
    int  tegels_op_bord();
+   bool alle_tegels_op_bord();
    bool gelijke_kleuren();
    bool ring_niet_dood();
    void zet_ringkleur();
@@ -1134,6 +1135,11 @@ bool Bord::ring_niet_dood()
    return true;
 }
 
+bool Bord::alle_tegels_op_bord()
+{
+   return tegels_op_bord() == aantal;
+}
+
 bool Bord::einde()
 {
    //std::cout << "tegels_op_bord " << tegels_op_bord() << "\n";
@@ -1374,18 +1380,21 @@ std::unique_ptr<Bord> Bord::solve_co_all()
 }
  */
 
-constexpr bool testslv = false;
+constexpr bool testslv = true;
 
 Generator<Bord_p> Bord::solve_step(int d)
 {
-   constexpr bool preliminary = true;
+   constexpr bool preliminary = false;  // include also the preliminary results
+   constexpr bool deadpath    = true;
+   
    static std::set<int>  borden;
 
    if (testslv) std::cout << l(d) << "Bord::solve_step() " << d << " " << toS() << "\n";
    
+   //if (!deadpath && einde() || deadpath && tegels_op_bord() == aantal)
    if (einde())
    {
-      if (testslv) std::cout << l(d+1) << "yield1 einde\n";
+      if (testslv) std::cout << l(d+1) << "yield1 einde " << alle_tegels_op_bord() << "\n";
       borden.clear();
       
       co_yield std::make_unique<Bord>(*this);
@@ -1488,11 +1497,11 @@ Generator<Bord_p> Bord::solve_step(int d)
                                     if (bord3 != nullptr && 
                                           (
                                              bord3->einde()
-                                             // || bord3->tegels_op_bord() == aantal
+                                             || bord3->alle_tegels_op_bord()
                                           )
                                        )
                                     {
-                                       if (testslv) std::cout  << l(d+1) << "yield4 einde\n";
+                                       if (testslv) std::cout  << l(d+1) << "yield4 einde " << bord3->einde() << "\n";
                                        co_yield std::move(std::make_unique<Bord>(*bord3));
                                     }
                                  }
@@ -1519,7 +1528,16 @@ Generator<Bord_p> Bord::solve_step(int d)
       //co_yield std::make_unique<Bord>(*this);
       
       //std::cout << "co_return\n";
-      co_return;
+      //if (alle_tegels_op_bord())
+      //{
+      //   if (testslv) std::cout  << l(d+1) << "yield5 tegels " << alle_tegels_op_bord() << "\n";
+      //   co_yield std::move(std::make_unique<Bord>(*this));
+      //}
+      //else
+      //{
+         if (testslv) std::cout  << l(d+1) << "return no yield tegels " << alle_tegels_op_bord() << " einde " << einde() << "\n";
+         co_return;
+      //}
    }
    if (testslv) std::cout << "solve_step end\n";
 }
