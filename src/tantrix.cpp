@@ -117,6 +117,10 @@ public:
    {
       return kleuren[ri];
    }
+   int get_nummer()
+   {
+      return nummer;
+   }
 };
 
 Tegel::Tegel(kleur_t hfd, int nr, kleur_t kl0, kleur_t kl1, kleur_t kl2, kleur_t kl3, kleur_t kl4, kleur_t kl5) :
@@ -236,7 +240,14 @@ Plaats::Plaats(const Plaats &van) :
 
 void Plaats::toon()
 {
-   std::cout << "*";
+   if (tegel != nullptr)
+   {
+      std::cout << tegel->get_nummer();
+   }
+   else
+   {
+      std::cout << ".";
+   }
 }
 
 void Plaats::zet_buur(richting_t ri, std::shared_ptr<Plaats> buur)
@@ -866,6 +877,7 @@ std::string Bord::toS()
 
 void Bord::toon()
 {
+   /*
    for (int i=0; i<n_tegels; i++)
    {
       if (tegels[i] != nullptr)
@@ -877,6 +889,9 @@ void Bord::toon()
          std::cout << "tegel nul\n";
       }
    }
+    */
+   
+   std::cout << "---- bord toon ----\n";
 
    for (int r=0; r<bordsize; r++)
    {
@@ -1137,6 +1152,7 @@ bool Bord::ring_niet_dood()
 
 bool Bord::alle_tegels_op_bord()
 {
+   //std::cout << " " << tegels_op_bord() << "/" << aantal << " ";
    return tegels_op_bord() == aantal;
 }
 
@@ -1384,21 +1400,37 @@ constexpr bool testslv = true;
 
 Generator<Bord_p> Bord::solve_step(int d)
 {
-   constexpr bool preliminary = false;  // include also the preliminary results
+   constexpr bool preliminary = false;  // include also the preliminary results, ex. half length path
    constexpr bool deadpath    = true;
+   constexpr bool doyield     = true;
    
    static std::set<int>  borden;
 
    if (testslv) std::cout << l(d) << "Bord::solve_step() " << d << " " << toS() << "\n";
    
-   //if (!deadpath && einde() || deadpath && tegels_op_bord() == aantal)
-   if (einde())
+   if (alle_tegels_op_bord())
    {
-      if (testslv) std::cout << l(d+1) << "yield1 einde " << alle_tegels_op_bord() << "\n";
-      borden.clear();
+      if (einde())
+      {
+         if (testslv) std::cout << l(d+1) << "yield1a einde\n";
+         borden.clear();
       
-      co_yield std::make_unique<Bord>(*this);
-      //co_yield shared_from_this();
+         if (doyield) co_yield std::make_unique<Bord>(*this);
+      }
+      else
+      {
+         // dead path reached
+         if (deadpath)
+         {
+            if (testslv) std::cout << l(d+1) << "yield1b dood pad\n";
+            if (doyield) co_yield std::make_unique<Bord>(*this);
+         }
+         else
+         {
+            if (testslv) std::cout  << l(d+1) << "return no 1 yield tegels " << alle_tegels_op_bord() << " einde " << einde() << "\n";
+            co_return;
+         }
+      }
    }
    else
    {
@@ -1407,7 +1439,7 @@ Generator<Bord_p> Bord::solve_step(int d)
       {
          for (int k=0; k<bordsize; k++)
          {
-            //std::cout << "plaats " << r  << " " << k <<"\n";
+            //if (testslv) std::cout << "r k " << r  << " " << k <<"\n";
             if (plaatsen[r][k]->bezet())
             {
                //std::cout << l(d+2) << "plaats niet nul " << r  << " " << k <<"\n";
@@ -1449,7 +1481,7 @@ Generator<Bord_p> Bord::solve_step(int d)
                                  // past de tegel?
                                  if (buurkl == ringkleur)
                                  {
-                                    if (testslv) std::cout << l(d+1) << "kleur past " << this << "\n";
+                                    if (testslv) std::cout << l(d+1) << "kleur past " << this << "r k ho " << r << " "  << k << " "  << ho << " " << "\n";
 
                                     // yield the preliminary result
                                     /*
@@ -1473,36 +1505,40 @@ Generator<Bord_p> Bord::solve_step(int d)
                                     // prepare the next recursive call
                                     if (testslv) std::cout << l(d+1) << "prepare\n";
                                     const Bord_p bord2 = std::make_unique<Bord>(*this, true);
-
                                     
                                     if (preliminary && !borden.contains(bord2->nr))
                                     {
                                        borden.insert(bord2->nr);
-                                       co_yield std::move(std::make_unique<Bord>(*bord2));
+                                       if (doyield) co_yield std::move(std::make_unique<Bord>(*bord2));
                                     }
                                     
-                                    //Bord_p bord3 = std::move(bord2->solve_step(d + 1).next());
-                                    Bord_p bord3 = bord2->solve_step(d + 1).next();
-                                    
-                                    // if (preliminary && bord3 != nullptr && !bord3->einde())
-                                    if (preliminary && bord3 != nullptr)
+                                    //Bord_p bord3 = bord2->solve_step(d + 1).next();
+                                    auto gen = bord2->solve_step(d + 1);
+                                    Bord_p bord3 = gen.next();
+                                    while (bord3 != nullptr)
                                     {
-                                       // return the preliminary result
-                                       if (testslv) std::cout << l(d+1) << "yield3 prelim2\n";
-                                       co_yield std::move(std::make_unique<Bord>(*bord3));
-                                       if (testslv) std::cout << l(d+1) << "na yield3 prelim2\n";
-                                    }
-                                    else
-                                    // zijn alle tegels geplaatst?
-                                    if (bord3 != nullptr && 
-                                          (
-                                             bord3->einde()
-                                             || bord3->alle_tegels_op_bord()
+                                       // if (preliminary && bord3 != nullptr && !bord3->einde())
+                                       if (preliminary && bord3 != nullptr)
+                                       {
+                                          // return the preliminary result
+                                          if (testslv) std::cout << l(d+1) << "yield3 prelim2\n";
+                                          if (doyield) co_yield std::move(std::make_unique<Bord>(*bord3));
+                                          if (testslv) std::cout << l(d+1) << "na yield3 prelim2\n";
+                                       }
+                                       else
+                                       // zijn alle tegels geplaatst?
+                                       if (bord3 != nullptr && 
+                                             (
+                                                bord3->einde() ||
+                                                bord3->alle_tegels_op_bord()
+                                             )
                                           )
-                                       )
-                                    {
-                                       if (testslv) std::cout  << l(d+1) << "yield4 einde " << bord3->einde() << "\n";
-                                       co_yield std::move(std::make_unique<Bord>(*bord3));
+                                       {
+                                          if (testslv) std::cout  << l(d+1) << "yield4 einde " << bord3->einde() << "\n";
+                                          if (doyield) co_yield std::move(std::make_unique<Bord>(*bord3));
+                                       }
+                                       bord3 = gen.next();
+
                                     }
                                  }
                               }
@@ -1522,24 +1558,10 @@ Generator<Bord_p> Bord::solve_step(int d)
             }
          }
       }
-      
-      //return std::make_unique<Bord>(*this);
-      //std::cout << "yield 3\n";
-      //co_yield std::make_unique<Bord>(*this);
-      
-      //std::cout << "co_return\n";
-      //if (alle_tegels_op_bord())
-      //{
-      //   if (testslv) std::cout  << l(d+1) << "yield5 tegels " << alle_tegels_op_bord() << "\n";
-      //   co_yield std::move(std::make_unique<Bord>(*this));
-      //}
-      //else
-      //{
-         if (testslv) std::cout  << l(d+1) << "return no yield tegels " << alle_tegels_op_bord() << " einde " << einde() << "\n";
-         co_return;
-      //}
+      if (testslv) std::cout  << l(d+1) << "return no 2 yield tegels " << alle_tegels_op_bord() << " einde " << einde() << "\n";
+      co_return;
    }
-   if (testslv) std::cout << "solve_step end\n";
+   if (testslv) std::cout << l(d+1) << "solve_step end\n";
 }
 
 // Calculate all the solutions, not only the first
@@ -1576,6 +1598,7 @@ std::vector<Bord_p> Bord::solve_co_all_v()
       if (val != nullptr)
       {
          std::cout << "solve_co_all_v val " << val->toS() << std::endl;
+         val->toon();
          all.push_back(std::move(val));
       }
       else
@@ -1910,7 +1933,7 @@ int main(int argc, char *argv[])
    bord->zet_ringkleur();
    std::unique_ptr<Bord> res_bord = bord->solve(0);
     */
-   Bord_p bord2 = std::make_unique<Bord>(5);
+   Bord_p bord2 = std::make_unique<Bord>(4);
    bord2->zet_starttegel();
    bord2->zet_ringkleur();
 
