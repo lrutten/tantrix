@@ -1530,7 +1530,7 @@ Generator<Bord_p> Bord::solve_step(int d)
                                        if (bord3 != nullptr && 
                                              (
                                                 bord3->einde() ||
-                                                bord3->alle_tegels_op_bord()
+                                                bord3->alle_tegels_op_bord() && bord3->gelijke_kleuren()
                                              )
                                           )
                                        {
@@ -1933,7 +1933,7 @@ int main(int argc, char *argv[])
    bord->zet_ringkleur();
    std::unique_ptr<Bord> res_bord = bord->solve(0);
     */
-   Bord_p bord2 = std::make_unique<Bord>(4);
+   Bord_p bord2 = std::make_unique<Bord>(5);
    bord2->zet_starttegel();
    bord2->zet_ringkleur();
 
