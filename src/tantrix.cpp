@@ -724,7 +724,7 @@ class Bord;
 using Bord_p = std::unique_ptr<Bord>;
 //using Bord_p = std::shared_ptr<Bord>;
 
-class Bord //: public std::enable_shared_from_this<Bord>
+class Bord : public std::enable_shared_from_this<Bord>
 {
 private:
    std::array<std::unique_ptr<Tegel>, n_tegels> tegels; // alle mogelijk tegels
@@ -735,6 +735,7 @@ private:
    std::shared_ptr<Plaats>                      laatste;
    int                                          nr;
    static int                                   teller;
+   std::weak_ptr<Bord>                          parent;
    
 public:
    Bord(int n);
@@ -759,6 +760,14 @@ public:
    Generator<Bord_p> solve_step(int d);
    Bord_p solve_co_all();
    std::vector<Bord_p> solve_co_all_v();
+   void zet_parent(std::shared_ptr<Bord> par)
+   {
+      parent = par;
+   }
+   std::shared_ptr<Bord> get_parent()
+   {
+      return parent.lock();
+   }
 };
 
 
@@ -806,7 +815,7 @@ Bord::Bord(int n) : aantal(n), eerste(nullptr), laatste(nullptr), nr(teller++),
    zetburen();
 }
 
-Bord::Bord(const Bord &van, bool inc) : aantal(van.aantal), ringkleur(van.ringkleur), eerste(van.eerste), laatste(van.laatste)
+Bord::Bord(const Bord &van, bool inc) : aantal(van.aantal), ringkleur(van.ringkleur), eerste(van.eerste), laatste(van.laatste), parent(van.parent)
 {
    if (inc)
    {
@@ -1504,7 +1513,8 @@ Generator<Bord_p> Bord::solve_step(int d)
 
                                     // prepare the next recursive call
                                     if (testslv) std::cout << l(d+1) << "prepare\n";
-                                    const Bord_p bord2 = std::make_unique<Bord>(*this, true);
+                                    Bord_p bord2 = std::make_unique<Bord>(*this, true);
+                                    //bord2->zet_parent(shared_from_this());
                                     
                                     if (preliminary && !borden.contains(bord2->nr))
                                     {
