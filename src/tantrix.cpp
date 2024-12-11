@@ -10,6 +10,7 @@
 #include <exception>
 #include <utility>
 #include <sstream>
+#include <getopt.h>
 
 
 #include <QApplication>
@@ -26,6 +27,7 @@ constexpr int boord     = tegel_br/2;
 constexpr int veld_br   = bordsize * tegel_br + tegel_br/2 + 2*boord;
 const double straal     = tegel_br/2.0/cos(30.0/360*2.0*std::numbers::pi);
 constexpr int boogdikte = 10;
+          bool deadpath = false;
 
 // De 6 punten van de Plaats in Plaatscoordinaten
 const double xx0 = 0.0;
@@ -217,6 +219,7 @@ public:
    {
       return {r, k};
    }
+   int get_nr();
    void teken(QPainter &painter);
    void boog1(QPainter &painter, kleur_t kleur);
    void boog2(QPainter &painter, kleur_t kleur);
@@ -304,6 +307,18 @@ int Plaats::aantal_buren()
       }
    }
    return n;
+}
+
+int Plaats::get_nr()
+{
+   if (tegel != nullptr)
+   {
+      return tegel->get_nummer();
+   }
+   else
+   {
+      return -1;
+   }
 }
 
 QColor naarQColor(kleur_t kleur)
@@ -507,103 +522,6 @@ void Plaats::teken(QPainter &painter)
 }
 
 
-/*
- * eerste versie
-
-template<typename T>
-struct Generator
-{
-   struct promise_type;
-   using handle_type = std::coroutine_handle<promise_type>;
-
-   struct promise_type
-   {
-      T value_;
-      std::exception_ptr exception_;
-
-      Generator get_return_object()
-      {
-         std::cout << "get_return_object()\n";
-         return Generator(handle_type::from_promise(*this));
-      }
-      std::suspend_always initial_suspend()
-      {
-         std::cout << "intial_suspend()\n";
-         return {};
-      }
-      std::suspend_always final_suspend() noexcept(true)
-      {
-         std::cout << "final_suspend()\n";
-         return {};
-      }
-      void unhandled_exception()
-      {
-         std::cout << "unhandled_exception()\n";
-         exception_ = std::current_exception();
-      }
-      template<std::convertible_to<T> From> // C++20 concept
-      std::suspend_always yield_value(From &&from)
-      {
-         std::cout << "yield_value\n";
-         value_ = std::forward<From>(from);
-         return {};
-      }
-      void return_void()
-      {
-         std::cout << "return_void()\n";
-      }
-   };
-
-   handle_type h_;
-
-   Generator(handle_type h) : h_(h)
-   {
-      std::cout << "Generator()\n";
-   }
-   ~Generator()
-   {
-      std::cout << "~Generator()\n";
-      h_.destroy();
-   }
-   explicit operator bool()
-   {
-      std::cout << "operator bool\n";
-      fill();
-      return !h_.done();
-   }
-   T operator()()
-   {
-      std::cout << "operator()\n";
-      fill();
-      full_ = false;
-      return std::move(h_.promise().value_);
-   }
-
-private:
-   bool full_ = false;
-
-   void fill()
-   {
-      std::cout << "fill()\n";
-      if (!full_)
-      {
-         std::cout << "   not full_\n";
-         h_();
-         if (h_.promise().exception_)
-         {
-            std::cout << "      exception\n";
-            std::rethrow_exception(h_.promise().exception_);
-         }
-         full_ = true;
-      }
-      else
-      {
-         std::cout << "   full_\n";
-      }
-   }
-};
- */
-
 constexpr bool testgen = false;
 
 // tweede versie
@@ -721,8 +639,8 @@ private:
 
 
 class Bord;
-using Bord_p = std::unique_ptr<Bord>;
-//using Bord_p = std::shared_ptr<Bord>;
+//using Bord_p = std::unique_ptr<Bord>;
+using Bord_p = std::shared_ptr<Bord>;
 
 class Bord : public std::enable_shared_from_this<Bord>
 {
@@ -740,7 +658,7 @@ private:
 public:
    Bord(int n);
    Bord (const Bord &van, bool inc = false);
-   //Bord &operator=(const Bord &van);
+   bool operator==(const Bord &van);
    int get_nr()
    {
       return nr;
@@ -857,25 +775,34 @@ void Bord::zet_ringkleur()
    ringkleur = tegels[aantal - 1]->get_kleur();
 }
 
-/*
-Bord &Bord::operator=(const Bord &van)
-{
-   for (int i=0; i<n_tegels; i++)
-   {
-      tegels[i] = std::make_unique<Tegel>(*van.tegels[i]);
-   }
 
+bool Bord::operator==(const Bord &van)
+{
    for (int r=0; r<bordsize; r++)
    {
       for (int k=0; k<bordsize; k++)
       {
-         plaatsen[r][k] = std::make_shared<Plaats>();
+         if (plaatsen[r][k] == nullptr && van.plaatsen[r][k] != nullptr ||
+             plaatsen[r][k] != nullptr && van.plaatsen[r][k] == nullptr)
+         {
+            return false;
+         }
+         else
+         {
+            if (plaatsen[r][k] != nullptr && van.plaatsen[r][k] != nullptr)
+            {
+               if (plaatsen[r][k]->get_nr() != van.plaatsen[r][k]->get_nr())
+               {
+                  return false;
+               }
+            }
+         }
       }
    }
    
-   return *this;
+   return true;
 }   
- */
+
 
 std::string Bord::toS()
 {
@@ -914,6 +841,11 @@ void Bord::toon()
          std::cout << " ";
       }
       std::cout << "\n";
+   }
+   Bord_p par = get_parent();
+   if (par != nullptr)
+   {
+      par->toon();
    }
 }
 
@@ -1170,7 +1102,7 @@ bool Bord::einde()
    //std::cout << "tegels_op_bord " << tegels_op_bord() << "\n";
    //std::cout << "eerste aantal buren " << eerste->aantal_buren() << "\n";
    //return (tegels_op_bord() == aantal) && (eerste->aantal_buren() >= 2);
-   return (tegels_op_bord() == aantal && gelijke_kleuren() && ring_niet_dood());
+   return (alle_tegels_op_bord() && gelijke_kleuren() && ring_niet_dood());
 }
 
 
@@ -1263,154 +1195,10 @@ std::unique_ptr<Bord> Bord::solve(int d)
 }
 
 
-
-/*
-
-   met unique_ptr voluit
-   
-Generator<std::unique_ptr<Bord>> Bord::solve_step(int d)
-{
-   std::cout << l(d) << "Bord::solve_step() " << d << " bord " << get_nr() << "\n";
-   
-   if (einde())
-   {
-      //std::cout << l(d+1) << "einde1 yield 1\n";
-      //return std::make_unique<Bord>(*this);
-      co_yield std::make_unique<Bord>(*this);
-   }
-   else
-   {
-      //std::cout << l(d+1) << "geen einde1\n";
-      for (int r=0; r<bordsize; r++)
-      {
-         for (int k=0; k<bordsize; k++)
-         {
-            //std::cout << "plaats " << r  << " " << k <<"\n";
-            if (plaatsen[r][k]->bezet())
-            {
-               //std::cout << l(d+2) << "plaats niet nul " << r  << " " << k <<"\n";
-               
-               // overloop de buren aan de 6 zijden
-               for (int ri = 0; ri<zijden; ri++)
-               {
-                  std::shared_ptr<Plaats> buur = plaatsen[r][k]->get_buur((richting_t)ri);
-                  if (buur != nullptr && !buur->bezet())
-                  {
-                     auto [rbu, kbu] = buur->get_rk();
-                     //std::cout << l(d+3) << "   " << ri << " lege buur " << rbu << " " << kbu << "\n";
-                     int kl = plaatsen[r][k]->get_kleur((richting_t)ri);
-                     //std::cout << l(d+3) << "   " << ri << " kleur " << kl << "\n";
-                     if (kl == ringkleur)
-                     {
-                        //std::cout << l(d+4) << "is ringkleur " << r << " " << k << "\n";
-                        
-                        // deze zijde is geschikt
-                        // probeer elk van de overblijvende tegels te plaatsen
-                        // bij buur
-                        for (int ti=0; ti<aantal; ti++)
-                        {
-                           // is de tegel beschikbaar?
-                           if (tegels[ti] != nullptr)
-                           {
-                              // plaats de tegel in het bord
-                              buur->zet_tegel(std::move(tegels[ti]));
-                              laatste = buur;
-                              
-                              // overloop alle hoeken
-                              for (int ho=0; ho<zijden; ho++)
-                              {
-                                 buur->zet_hoek(ho);
-                                 
-                                 int opri   = opposite(ri);
-                                 int buurkl = buur->get_kleur((richting_t)opri);
-                                 
-                                 // past de tegel?
-                                 if (buurkl == ringkleur)
-                                 {
-                                    std::cout << l(d+1) << "kleur past " << this << "\n";
-                                    const std::unique_ptr<Bord> bord2 = std::make_unique<Bord>(*this);
-                                    std::unique_ptr<Bord> bord3 = std::move(bord2->solve_step(d + 1).next());
-                                    
-                                    // zijn alle tegels geplaatst?
-                                    //if (bord3->tegels_op_bord() == aantal)
-                                    if (bord3 != nullptr && bord3->einde())
-                                    {
-                                       //std::cout << l(d+6) << "einde2 yield 2\n";
-                                       //return std::make_unique<Bord>(*bord3);
-                                       
-                                       // make a copy
-                                       //co_yield std::make_unique<Bord>(*bord3);
-                                       
-                                       // no copy
-                                       std::cout  << l(d+1) << "yield bord3 " << bord3->get_nr() << " " << bord3 << "\n"; 
-                                       co_yield std::move(bord3);
-                                    }
-                                 }
-                              }
-                              // plaats de tegel terug in de reserve
-                              std::cout << l(d+1) << "plaats terug this " << this << " bord nr " << get_nr() << " ti " << ti << "\n"; 
-                              tegels[ti] = std::move(buur->haalop_tegel());
-                              std::cout << l(d+1) << "na haalop bord nr " << get_nr() << "\n";
-                           }
-                        }
-                     }
-                  }
-                  else
-                  {
-                     //std::cout << "   " << ri << " volle buur\n";
-                  }
-               }
-            }
-         }
-      }
-      
-      //return std::make_unique<Bord>(*this);
-      //std::cout << "yield 3\n";
-      //co_yield std::make_unique<Bord>(*this);
-      
-      //std::cout << "co_return\n";
-      co_return;
-   }
-   std::cout << "solve_step end\n";
-}
-
-// Calculate all the solutions, not only the first
-std::unique_ptr<Bord> Bord::solve_co_all()
-{
-   std::cout << "solve_co_all\n";
-
-   constexpr int limit = 2;
-   int i = 0;
-   std::unique_ptr<Bord> last = nullptr;
-   auto gen = solve_step(0);
-   std::cout << "after return solve_step\n";
-   while (!gen.done())
-   {
-      std::unique_ptr<Bord> val = gen.next();
-      std::cout << "solve_co_all val " << val << std::endl;
-      if (val != nullptr)
-      {
-         last = std::move(val);
-         
-         // for test
-         i++;
-         if (i >= limit)
-         {
-            return last;
-         }
-      }
-   }
-
-   return std::move(last);
-}
- */
-
-constexpr bool testslv = true;
+constexpr bool testslv = false;
 
 Generator<Bord_p> Bord::solve_step(int d)
 {
-   constexpr bool preliminary = false;  // include also the preliminary results, ex. half length path
-   constexpr bool deadpath    = true;
    constexpr bool doyield     = true;
    
    static std::set<int>  borden;
@@ -1424,7 +1212,7 @@ Generator<Bord_p> Bord::solve_step(int d)
          if (testslv) std::cout << l(d+1) << "yield1a einde\n";
          borden.clear();
       
-         if (doyield) co_yield std::make_unique<Bord>(*this);
+         if (doyield) co_yield std::make_shared<Bord>(*this);
       }
       else
       {
@@ -1432,7 +1220,7 @@ Generator<Bord_p> Bord::solve_step(int d)
          if (deadpath)
          {
             if (testslv) std::cout << l(d+1) << "yield1b dood pad\n";
-            if (doyield) co_yield std::make_unique<Bord>(*this);
+            if (doyield) co_yield std::make_shared<Bord>(*this);
          }
          else
          {
@@ -1492,60 +1280,32 @@ Generator<Bord_p> Bord::solve_step(int d)
                                  {
                                     if (testslv) std::cout << l(d+1) << "kleur past " << this << "r k ho " << r << " "  << k << " "  << ho << " " << "\n";
 
-                                    // yield the preliminary result
-                                    /*
-                                    if (preliminary && false)
-                                    {
-                                       if (!borden.contains(nr))
-                                       {
-                                          borden.insert(nr);
-                                          
-                                          if (testslv) std::cout << l(d+1) << "yield2 prelim\n";
-                                          co_yield std::move(std::make_unique<Bord>(*this));
-                                          if (testslv) std::cout << l(d+1) << "na yield2 prelim\n";
-                                       }
-                                       else
-                                       {
-                                          if (testslv) std::cout << l(d+1) << "no yield2 prelim\n";
-                                       }
-                                    }
-                                     */
-
                                     // prepare the next recursive call
                                     if (testslv) std::cout << l(d+1) << "prepare\n";
-                                    Bord_p bord2 = std::make_unique<Bord>(*this, true);
-                                    //bord2->zet_parent(shared_from_this());
-                                    
-                                    if (preliminary && !borden.contains(bord2->nr))
-                                    {
-                                       borden.insert(bord2->nr);
-                                       if (doyield) co_yield std::move(std::make_unique<Bord>(*bord2));
-                                    }
-                                    
+                                    Bord_p bord2 = std::make_shared<Bord>(*this, true);
+                                    bord2->zet_parent(shared_from_this());
+
                                     //Bord_p bord3 = bord2->solve_step(d + 1).next();
                                     auto gen = bord2->solve_step(d + 1);
                                     Bord_p bord3 = gen.next();
                                     while (bord3 != nullptr)
                                     {
-                                       // if (preliminary && bord3 != nullptr && !bord3->einde())
-                                       if (preliminary && bord3 != nullptr)
-                                       {
-                                          // return the preliminary result
-                                          if (testslv) std::cout << l(d+1) << "yield3 prelim2\n";
-                                          if (doyield) co_yield std::move(std::make_unique<Bord>(*bord3));
-                                          if (testslv) std::cout << l(d+1) << "na yield3 prelim2\n";
-                                       }
-                                       else
+                                       // einde() means 
+                                       //   alle_tegels_op_bord() && gelijke_kleuren() && ring_niet_dood()
+                                       //
+                                       bool at = bord3->alle_tegels_op_bord();
+                                       bool gk = bord3->gelijke_kleuren();
+                                       bool rd = bord3->ring_niet_dood();
+
                                        // zijn alle tegels geplaatst?
                                        if (bord3 != nullptr && 
                                              (
-                                                bord3->einde() ||
-                                                bord3->alle_tegels_op_bord() && bord3->gelijke_kleuren()
+                                                at && gk && (rd || deadpath)
                                              )
                                           )
                                        {
                                           if (testslv) std::cout  << l(d+1) << "yield4 einde " << bord3->einde() << "\n";
-                                          if (doyield) co_yield std::move(std::make_unique<Bord>(*bord3));
+                                          if (doyield) co_yield std::move(std::make_shared<Bord>(*bord3));
                                        }
                                        bord3 = gen.next();
 
@@ -1595,6 +1355,18 @@ Bord_p Bord::solve_co_all()
    return std::move(last);
 }
 
+bool is_in(const std::vector<Bord_p> &all, Bord_p bo) 
+{
+   for (Bord_p bo2: all)
+   {
+      if (*bo2 == *bo)
+      {
+         return true;
+      }
+   }
+   return false;
+}
+
 // Calculate all the solutions, not only the first
 std::vector<Bord_p> Bord::solve_co_all_v()
 {
@@ -1602,14 +1374,17 @@ std::vector<Bord_p> Bord::solve_co_all_v()
    std::vector<Bord_p> all; 
    auto gen = solve_step(0);
    std::cout << "after return solve_step\n";
-   while (!gen.done())
+   while (!gen.done()) 
    {
       Bord_p val = gen.next();
       if (val != nullptr)
       {
          std::cout << "solve_co_all_v val " << val->toS() << std::endl;
-         val->toon();
-         all.push_back(std::move(val));
+         //val->toon();
+         if (!is_in(all, val))
+         {
+            all.push_back(std::move(val));
+         }
       }
       else
       {
@@ -1925,9 +1700,59 @@ void main5()
    }
 }
 
+std::string version = "0.5.0";
+std::string date    = "11/12/2024";
+
 
 int main(int argc, char *argv[])
 {
+   int tnumber = 4;
+   int opt;
+   while ((opt = getopt(argc, argv, "hdn:s:")) != -1)
+   {
+      switch (opt)
+      {
+         case 'h':
+            std::cout << "tantrix\n";
+            std::cout << " version: " << version << "\n";
+            std::cout << " date: " << date << "\n";
+            std::cout << " options:\n";
+            std::cout << "   -h help\n";
+            std::cout << "   -n number tiles\n";
+            std::cout << "   -d include dead paths\n";
+            exit(0);
+            break;
+
+          case 'n':
+            try
+            {
+               tnumber = std::stoi(optarg);
+            }
+            catch (std::invalid_argument &e)
+            {
+               std::cout << "use integer as argument for -n\n";
+               exit(1);
+            }
+            break;
+
+         case 's':
+            try
+            {
+               int size = std::stoi(optarg);
+            }
+            catch (std::invalid_argument &e)
+            {
+               std::cout << "use integer as argument for -s\n";
+               exit(1);
+            }
+            break;
+
+         case 'd':
+            deadpath = true;
+            break;
+      }
+   }
+   
    //test de Generator
    //main5();
    //return 0;
@@ -1943,7 +1768,7 @@ int main(int argc, char *argv[])
    bord->zet_ringkleur();
    std::unique_ptr<Bord> res_bord = bord->solve(0);
     */
-   Bord_p bord2 = std::make_unique<Bord>(5);
+   Bord_p bord2 = std::make_unique<Bord>(tnumber);
    bord2->zet_starttegel();
    bord2->zet_ringkleur();
 
